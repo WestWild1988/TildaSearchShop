@@ -3,3 +3,6 @@ flask-cors
 gunicorn
 requests
 beautifulsoup4
+fastapi
+uvicorn
+pydantic
