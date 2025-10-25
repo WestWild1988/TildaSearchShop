@@ -1,8 +1,5 @@
-fastapi
-uvicorn
+Flask
+gunicorn
 requests
 beautifulsoup4
-pydantic
-gunicorn
-Flask
-requests
+flask-cors
