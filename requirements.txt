@@ -1,8 +1,5 @@
-Flask
-flask-cors
-gunicorn
-requests
-beautifulsoup4
 fastapi
 uvicorn
+requests
+beautifulsoup4
 pydantic
