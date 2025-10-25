@@ -1,91 +1,92 @@
 import os
 import json
+import re
 from flask import Flask, request, jsonify
-from google import genai
-from google.genai.errors import APIError
-from gunicorn.app.base import BaseApplication
+from flask_cors import CORS
+from bs4 import BeautifulSoup
+
+# Импортируем библиотеки для скрапинга
+import requests
 
 app = Flask(__name__)
+# Включаем CORS, чтобы фронтенд мог обращаться к этому API
+CORS(app)
 
 # ==============================================================================
-# КОНФИГУРАЦИЯ GEMINI & API
+# МОДЕЛЬНЫЙ HTML-КОНТЕНТ ДЛЯ СКРАПИНГА
+# Имитация страницы каталога для демонстрации работы с BeautifulSoup
 # ==============================================================================
 
-# Проверяем переменную окружения. Render автоматически загрузит ключ,
-# который вы должны установить в настройках сервиса Render.
-try:
-    API_KEY = os.environ['GEMINI_API_KEY']
-    genai.configure(api_key=API_KEY)
-    client = genai.Client()
-    print("INFO: Gemini Client инициализирован.")
-except KeyError:
-    print("FATAL: Переменная окружения 'GEMINI_API_KEY' не найдена.")
-    client = None
-except Exception as e:
-    print(f"FATAL: Ошибка инициализации Gemini Client: {e}")
-    client = None
+# Этот HTML-код основан на фрагменте, который вы загружали ранее (PageSound)
+MOCK_HTML_CONTENT = """
+<div class="cont-product_sect clearfix">
+    <a href="/catalog/dj_oborudovanie/" class="cat-body_item">
+        <div class="title"><span>DJ-оборудование</span></div>
+    </a>
+    <a href="/catalog/akusticheskie_sistemy/" class="cat-body_item">
+        <div class="title"><span>Акустические системы</span></div>
+    </a>
+    <a href="/catalog/mikrofony/" class="cat-body_item">
+        <div class="title"><span>Микрофоны студийные и вокальные</span></div>
+    </a>
+    <a href="/catalog/usiliteli/" class="cat-body_item">
+        <div class="title"><span>Усилители мощности</span></div>
+    </a>
+    <a href="/catalog/mikrofony_shure/" class="cat-body_item">
+        <div class="title"><span>Микрофоны Shure (Официальный дилер)</span></div>
+    </a>
+    <a href="/catalog/behringer/" class="cat-body_item">
+        <div class="title"><span>Оборудование Behringer</span></div>
+    </a>
+</div>
+"""
 
 # ==============================================================================
-# ФУНКЦИИ БЭКЕНД-ЛОГИКИ
+# ФУНКЦИИ БЭКЕНД-ЛОГИКИ (Скрапинг)
 # ==============================================================================
 
-def execute_google_search(query: str):
+def execute_catalog_search(query: str):
     """
-    Выполняет поиск через Gemini API с использованием инструмента Google Search.
+    Выполняет поиск в модельном HTML-каталоге, используя BeautifulSoup.
     
     Args:
         query: Пользовательский поисковый запрос.
         
     Returns:
-        Список источников в формате, ожидаемом фронтендом, или сообщение об ошибке.
+        Список источников в формате, ожидаемом фронтендом.
     """
-    if not client:
-        return {"error": "API Key не установлен или клиент не инициализирован."}, 500
-
-    # Запрос к модели: просим сгенерировать короткий сниппет и используем Google Search
-    prompt = f"Найди в Интернете информацию по запросу и дай краткий ответ. Основной запрос: {query}"
+    # Преобразуем запрос в нижний регистр для нечувствительного к регистру поиска
+    search_query = query.lower()
     
-    print(f"INFO: Отправка запроса в Gemini: '{prompt}'")
+    # 1. Парсим модельный HTML-контент
+    soup = BeautifulSoup(MOCK_HTML_CONTENT, 'html.parser')
     
-    try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash-preview-09-2025',
-            contents=prompt,
-            config=genai.types.GenerateContentConfig(
-                tools=[{"google_search": {}}] # Включаем Google Search Grounding
-            ),
-        )
-
-        # 1. Извлекаем метаданные заземления (Grounding Attributions)
-        grounding_metadata = response.candidates[0].grounding_metadata if response.candidates and response.candidates[0].grounding_metadata else None
+    # Ищем все ссылки на категории товаров
+    category_links = soup.find_all('a', class_='cat-body_item')
+    
+    results = []
+    
+    for link in category_links:
+        title_span = link.find('span')
+        title = title_span.text.strip() if title_span else "Категория без названия"
+        uri = link.get('href', '#')
         
-        if not grounding_metadata or not grounding_metadata.grounding_attributions:
-            # Если нет аттрибуций (ссылок), возвращаем ошибку, так как фронтенд ждет источники
-            return {"error": "Поиск не дал источников (Grounding Attributions пуст)."}, 404
+        # 2. Проверяем, соответствует ли название категории поисковому запросу
+        if search_query in title.lower():
+            # Форматируем результат, как того ожидает фронтенд
+            results.append({
+                "title": title,
+                "uri": "https://example.com" + uri, # Добавляем базовый домен
+                "snippet": f"Каталог товаров по категории '{title}'. Найдено по запросу '{query}'."
+            })
 
-        # 2. Форматируем источники в нужный формат: {title, snippet, uri}
-        results = []
-        for attr in grounding_metadata.grounding_attributions:
-            if attr.web:
-                # В качестве snippet используем текст, который модель связала с этим источником,
-                # или сам текст, сгенерированный моделью, если это возможно.
-                # В данной реализации используем title и uri из Google Search
-                results.append({
-                    "title": attr.web.title if attr.web.title else "Источник без названия",
-                    "uri": attr.web.uri,
-                    # Используем snippet из самого аттрибута, если доступен.
-                    "snippet": attr.web.snippet if attr.web.snippet else "Краткое описание недоступно. Перейдите по ссылке для получения деталей."
-                })
+    print(f"INFO: Успешно найдено {len(results)} результатов для запроса '{query}'.")
+    
+    if not results:
+        # Если ничего не найдено, возвращаем 404
+        return {"error": f"Ничего не найдено в каталоге по запросу: {query}"}, 404
         
-        print(f"INFO: Успешно извлечено {len(results)} источников.")
-        return results, 200
-
-    except APIError as e:
-        print(f"ERROR: Ошибка Gemini API: {e}")
-        return {"error": f"Ошибка Gemini API: {e}"}, 500
-    except Exception as e:
-        print(f"ERROR: Неожиданная ошибка: {e}")
-        return {"error": f"Внутренняя ошибка сервера: {e}"}, 500
+    return results, 200
 
 
 # ==============================================================================
@@ -102,8 +103,8 @@ def search_endpoint():
 
     query = request.json['query']
     
-    # 1. Выполняем основную логику поиска
-    results, status_code = execute_google_search(query)
+    # 1. Выполняем логику поиска/скрапинга
+    results, status_code = execute_catalog_search(query)
     
     # 2. Возвращаем результат
     return jsonify(results), status_code
@@ -114,7 +115,7 @@ def health_check():
     """
     Проверка работоспособности сервиса.
     """
-    return jsonify({"status": "ok", "service": "psp-search-backend", "client_initialized": client is not None}), 200
+    return jsonify({"status": "ok", "service": "psp-search-backend (Scraping version)", "search_engine": "BeautifulSoup"}), 200
 
 
 # Запуск Gunicorn через BaseApplication для упрощения запуска в Render
