@@ -20,10 +20,10 @@ CORS(app)
 # КОНСТАНТЫ
 # ==============================================================================
 
-# Таймаут для каждого запроса на скрапинг отдельной страницы
+# Таймаут для каждого запроса на скрапинг отдельной страницы (для имитации)
 SCRAPE_TIMEOUT = 5 
-# Ограничиваем количество скрапируемых ссылок для демонстрации
-MAX_LINKS_TO_SCRAPE = 5 
+# Нам нужно 20 результатов (4 страницы по 5)
+REQUIRED_RESULTS = 20 
 BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 }
@@ -34,75 +34,86 @@ BASE_HEADERS = {
 
 def generate_mock_results(query: str) -> list[dict]:
     """
-    Генерирует 20 уникальных, реалистичных мок-результатов для пагинации.
+    Генерирует 20 уникальных, реалистичных мок-результатов для пагинации
+    и фильтрации на основе одного ключевого запроса.
     """
-    base_title = query.replace(' (Eng. Equivalent)', '').strip()
+    # Гарантируем, что цена будет в диапазоне, который может быть обработан
+    # ползунками фронтенда (до ~1000 * 1000 = 1,000,000 руб.)
+    base_price = random.randint(15000, 35000)
     
-    # Определяем базовую цену для ранжирования
-    base_price = random.randint(10000, 30000)
+    mock_data = []
     
-    results = []
-    
-    for i in range(1, 21):
-        # Создаем уникальный URI и Source
-        source = f"site-{random.randint(1, 5)}.ru"
-        uri = f"https://{source}/product/{base_title.lower().replace(' ', '-')}-{i}"
+    # Генерируем 20 результатов
+    for i in range(REQUIRED_RESULTS):
+        # Цена с небольшим разбросом
+        price_offset = random.randint(-5000, 15000)
+        price = max(1000, base_price + price_offset + (i * 100))
         
-        # Генерируем цену с небольшим разбросом
-        price_variation = random.uniform(0.8, 1.2)
-        price = round(base_price * price_variation, -2) # Округляем до сотен
+        # Различные источники
+        sources = ['ozon.ru', 'market.yandex.ru', 'pop-music.ru', 'muzmarket.ru']
+        source = sources[i % len(sources)]
         
-        # Определяем ранг. Лучший результат (rank 1) будет всегда первым 
-        # после сортировки, так как у него самая низкая цена.
-        rank = 0
-        if i == 1:
-            # Делаем первый результат самым дешевым
-            price = min(base_price * 0.7, 9999) 
-            rank = 1
-
-        results.append({
-            "title": f"{base_title} - Версия {i}",
-            "snippet": f"Описание товара {base_title}. Отличный микрофон для студийной и сценической работы. В наличии на складе в Москве.",
-            "uri": uri,
+        # Rank: назначаем 1 для первого результата, чтобы проверить бейдж на фронте
+        rank = 1 if i == 0 else random.choice([2, 3, 4, 5])
+        
+        item = {
+            "title": f"Микрофон {query.capitalize()} Pro X {100 + i}",
+            "snippet": f"Профессиональная модель для студийной записи. Отличный выбор для {query}. Гарантия 1 год.",
+            "uri": f"https://{source}/product/{i+1}",
             "source": source,
             "price": price,
             "rank": rank,
-            "debug_query": query # Для отладки
-        })
+        }
+        mock_data.append(item)
     
-    # Сортируем по цене, чтобы rank=1 всегда был самым дешевым
-    results.sort(key=lambda x: x['price'])
-    # Устанавливаем rank=1 для самого дешевого после сортировки
-    if results:
-        results[0]['rank'] = 1
-        
-    return results
+    # Сортируем по цене для соответствия правилам
+    mock_data.sort(key=lambda x: x['price'])
+    
+    # Обновляем rank после сортировки, чтобы самый дешевый был rank 1
+    for i in range(len(mock_data)):
+        # Назначаем Rank 1 самому дешевому товару
+        mock_data[i]['rank'] = 1 if i == 0 else random.randint(2, 5)
+
+    return mock_data
+
+def get_search_links(base_query: str) -> list[str]:
+    """
+    Имитирует вызов внешнего поисковика (Яндекс/Google) для получения 
+    списка релевантных ссылок.
+    """
+    print(f"[{time.strftime('%H:%M:%S')}] Имитация: Получение ссылок для '{base_query}'")
+    
+    # Имитируем задержку
+    time.sleep(random.uniform(0.5, 1.5))
+    
+    # В реальном приложении здесь будет логика вызова поискового API.
+    return []
 
 # ==============================================================================
-# ЭТАП 1 & 2: ИМИТАЦИЯ ДВУХЭТАПНОГО ПОИСКА
+# ЭТАП 2: ДВУХЭТАПНЫЙ ПОИСК И ГЕНЕРАЦИЯ МОК-ДАННЫХ
 # ==============================================================================
 
-def two_stage_search(query: str) -> tuple[list[dict], int]:
+def two_stage_search(query: str) -> tuple[list, int]:
     """
-    Имитирует двухэтапный поиск:
-    1. Поиск ссылок по запросу.
-    2. Сканирование (скрапинг) этих ссылок.
+    Имитирует двухэтапный процесс: 
+    1. Получение ссылок (сейчас игнорируется).
+    2. Глубокий скрапинг (сейчас имитируется генерацией данных).
     
-    Поскольку реальный скрапинг запрещен, используем генерацию мок-данных.
-    Искусственная задержка удалена, поиск теперь мгновенный.
+    Возвращает 20 мок-результатов.
     """
-    print(f"BACKEND: Имитация поиска по запросу: {query}")
-    # time.sleep(1.5) # Имитация задержки на поиск - УДАЛЕНО
+    print(f"[{time.strftime('%H:%M:%S')}] Запуск двухэтапного поиска для '{query}'")
     
-    # 1. Имитация получения ссылок
-    # В реальном приложении здесь был бы вызов поискового API
+    # 1. Имитация Этапа 1 (Получение ссылок)
+    # links = get_search_links(query) 
     
-    # 2. Имитация сканирования/получения данных
+    # 2. Имитация Этапа 2 (Глубокий скрапинг / Генерация данных)
+    # Используем мок-генератор, чтобы гарантировать 20 результатов
     final_results = generate_mock_results(query)
             
     # 3. Возвращаем результат
     if not final_results:
-        return {"error": f"Ничего не найдено после двухэтапного поиска по запросу: {query}"}, 404
+        # Это должно быть невозможно с мок-генератором, но для надежности
+        return {"error": f"Ничего не найдено по запросу: {query}"}, 404
             
     return final_results, 200
 
@@ -115,16 +126,21 @@ def two_stage_search(query: str) -> tuple[list[dict], int]:
 def search_endpoint():
     """
     Основная конечная точка для приема поисковых запросов.
-    Ожидает JSON-тело с полем 'queries' (массив строк).
+    Ожидает JSON-тело с полем 'queries' (массив строк), как требует фронтенд.
     """
+    
+    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем наличие 'queries'
     if not request.json or 'queries' not in request.json or not isinstance(request.json['queries'], list):
+        print(f"[{time.strftime('%H:%M:%S')}] ОШИБКА 400: Неверный формат запроса. Получено: {request.json}")
         return jsonify({"error": "Требуется JSON-тело с полем 'queries' (массив строк)."}), 400
 
     queries = request.json['queries']
     
     # Используем первый запрос из массива (наиболее точный или основной) 
-    # для существующей функции two_stage_search.
-    main_query = queries[0] if queries else "" 
+    # для логики двухэтапного поиска.
+    main_query = queries[0] if queries else "generic audio equipment" 
+
+    print(f"[{time.strftime('%H:%M:%S')}] Принят запрос. Основной query: '{main_query}', весь массив: {queries}")
 
     # 1. Выполняем логику двухэтапного поиска
     results, status_code = two_stage_search(main_query)
@@ -138,8 +154,9 @@ def health_check():
     """
     Проверка работоспособности сервиса.
     """
-    return jsonify({"status": "ok", "service": "psp-search-backend (Mock-Scraping)"}), 200
+    return jsonify({"status": "ok", "service": "psp-search-backend (Two-Stage Scraping Mock)"}), 200
 
 if __name__ == '__main__':
-    # Используем порт 5000 для работы в среде Canvas
-    app.run(debug=True, port=5000)
+    # ВНИМАНИЕ: Для продакшена используйте Gunicorn или другой WSGI-сервер
+    # Flask-сервер используется только для локальной разработки
+    app.run(debug=True, host='0.0.0.0', port=os.environ.get('PORT', 5000))
