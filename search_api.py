@@ -35,76 +35,68 @@ BASE_HEADERS = {
 def generate_mock_results(query: str) -> list[dict]:
     """
     Генерирует 20 уникальных, реалистичных мок-результатов для пагинации
-    и сортировки. Эта функция имитирует результат двухэтапного поиска.
-    
-    :param query: Основной поисковый запрос.
-    :return: Список объектов-результатов.
+    и сортировки, как того требует фронтенд.
     """
     results = []
+    base_product_name = query.replace(' ', '-').title()
+    base_source_url = f"https://mock-shop-{random.randint(1, 9)}.ru"
     
-    # Имитируем разные магазины
-    sources = [
-        "pop-music.ru", "muztorg.ru", "djdome.ru", "sindor.pro", 
-        "audiomania.ru", "prodevice.ru", "market-pro.ru", "a&t-trade.ru"
-    ]
-    
-    # Имитируем 20 результатов
-    for i in range(REQUIRED_RESULTS):
-        # Генерируем уникальную цену, чтобы обеспечить хорошую сортировку
-        # Цены в рублях (₽), округлены до сотен
-        price = random.randint(15000, 150000) * (1 + (i % 5) * 0.01)
-        price = int(round(price, -2)) 
+    # Генерируем 20 уникальных результатов
+    for i in range(1, REQUIRED_RESULTS + 1):
+        # Генерируем уникальную цену, чтобы обеспечить разнообразие для сортировки
+        base_price = random.randint(30000, 150000)
+        price_variation = random.randint(-5000, 5000)
+        price = base_price + price_variation
         
-        # Имитация названия товара
-        product_name_part = query.replace(' equipment', '').strip()
-        brand = random.choice(["Shure", "Sennheiser", "AKG", "Neumann", "Rode"])
-        model = f"{brand} {product_name_part} Model V{random.randint(1, 10)}{random.choice(['A', 'B', 'C'])}"
+        # Определяем ранг. Для мока используем i == 1 для "лучшего"
+        rank = 1 if i == 1 else i 
         
-        # Имитация сниппета
-        snippet = f"Профессиональный динамический {product_name_part.lower()} для студийной и сценической работы. В наличии. Доставка от {random.randint(2, 7)} дней."
-        
-        # Имитация URI и Source
-        source = random.choice(sources)
-        uri = f"https://www.{source}/product/{i+1}/{model.replace(' ', '-').lower()}"
-        
-        # Имитация ранга (для выделения лучших)
-        rank = 1 if i == 0 else random.randint(2, 10)
+        # Генерируем реалистичный сниппет
+        snippet = f"Профессиональный микрофон {base_product_name} с кардиоидной диаграммой. Идеален для студийной записи и живых выступлений. Гарантия 1 год. Скидка -{random.randint(5, 15)}%!"
         
         results.append({
-            "title": model,
+            "title": f"Купить {base_product_name} — Цена {price}₽",
             "snippet": snippet,
-            "uri": uri,
-            "source": source,
+            "uri": f"{base_source_url}/product/{base_product_name.lower()}-{i}",
+            "source": urlparse(base_source_url).netloc,
             "price": price,
             "rank": rank
         })
     
-    # Мок-данные возвращаются несортированными, 
-    # сортировка будет выполняться на фронтенде согласно правилам.
+    # Перемешиваем результаты, чтобы проверить сортировку на фронтенде
+    random.shuffle(results)
+    
+    # Обеспечиваем, что первый результат с rank=1 всегда присутствует
+    # (хотя он мог быть перемешан, но его price остается)
+    
     return results
+
+# ==============================================================================
+# ЭТАП 2: ДВУХЭТАПНЫЙ ПОИСК (УПРОЩЕННАЯ РЕАЛИЗАЦИЯ)
+# ==============================================================================
 
 def two_stage_search(query: str) -> tuple[list[dict], int]:
     """
-    Имитирует основную логику двухэтапного поиска (Stage I & II).
-    В реальном приложении здесь будет логика вызова поискового API и скрапинга.
-    
-    :param query: Основной поисковый запрос (берется первый из массива 'queries').
-    :return: Список результатов и статус-код.
+    Имитация двухэтапного поиска:
+    1. Получение ссылок (имитация).
+    2. Скрапинг страниц (имитация генерации мок-результатов).
     """
-    # Имитация задержки API
-    time.sleep(random.uniform(1.0, 3.0)) 
+    print(f"[{time.strftime('%H:%M:%S')}] Имитация Stage 1: Получение ссылок для запроса: '{query}'")
+    # Имитация задержки поиска
+    time.sleep(random.uniform(0.5, 1.5)) 
     
-    if "ошибка" in query.lower():
-        # Имитация ошибки на стороне бэкенда
-        return {"error": "Имитация внутренней ошибки сервера (500)."}, 500
+    # В реальном приложении здесь был бы вызов get_search_links()
+    
+    # Имитируем генерацию 20 уникальных результатов
+    final_results = generate_mock_results(query)
+    
+    print(f"[{time.strftime('%H:%M:%S')}] Имитация Stage 2: Скрапинг завершен. Найдено {len(final_results)} результатов.")
         
-    # Возвращаем мок-результаты
-    results = generate_mock_results(query)
-    
-    if not results:
+    if not final_results:
         return {"error": f"Ничего не найдено после двухэтапного поиска по запросу: {query}"}, 404
             
-    return results, 200
+    return final_results, 200
+
 
 # ==============================================================================
 # FLASK ROUTE
@@ -117,12 +109,10 @@ def search_endpoint():
     Ожидает JSON-тело с полем 'queries' (массив строк), как требует фронтенд.
     """
     
-    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Теперь проверяем наличие 'queries'
+    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем наличие 'queries'
     if not request.json or 'queries' not in request.json or not isinstance(request.json['queries'], list):
-        # Эта ошибка 400 должна быть возвращена, если фронтенд отправляет неверный формат
-        error_message = "Требуется JSON-тело с полем 'queries' (массив строк)."
-        print(f"[{time.strftime('%H:%M:%S')}] ОШИБКА 400: Неверный формат запроса. Детали: {error_message}")
-        return jsonify({"error": error_message}), 400
+        print(f"[{time.strftime('%H:%M:%S')}] ОШИБКА 400: Неверный формат запроса. Ожидается 'queries' (массив строк). Получено: {request.json}")
+        return jsonify({"error": "Требуется JSON-тело с полем 'queries' (массив строк)."}, 400)
 
     queries = request.json['queries']
     
@@ -144,11 +134,8 @@ def health_check():
     """
     Проверка работоспособности сервиса.
     """
-    return jsonify({"status": "ok", "service": "psp-search-backend (Mock Two-Stage Scraping)"}), 200
-
+    return jsonify({"status": "ok", "service": "psp-search-backend (Two-Stage Scraping Mock)"}), 200
 
 if __name__ == '__main__':
-    # При запуске локально, используем стандартный порт 5000
-    port = int(os.environ.get('PORT', 5000))
-    # Включаем отладочный режим только для локальной разработки
-    app.run(debug=True, host='0.0.0.0', port=port)
+    # Эта часть не используется в Canvas, но полезна для локального тестирования
+    app.run(debug=True, port=5000)
