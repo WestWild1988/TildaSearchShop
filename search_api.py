@@ -110,16 +110,26 @@ def perform_yandex_search(query: str) -> list[dict]:
 
 # ----------------------------------------------------------------------
 # ИНИЦИАЛИЗАЦИЯ FLASK API
-# Переменная 'app' должна быть определена на верхнем уровне для Gunicorn
 # ----------------------------------------------------------------------
 app = Flask(__name__)
 # Включаем CORS для всех маршрутов
 CORS(app) 
 
+# НОВЫЙ МАРШРУТ: Корневой маршрут, чтобы избежать ошибки 404 в браузере.
+@app.route('/', methods=['GET'])
+def home():
+    """Возвращает сообщение о том, что API-сервис запущен."""
+    return jsonify({
+        "status": "online",
+        "service": "PSP Aggregator API",
+        "message": "Сервис успешно запущен. Используйте маршрут /api/search с POST-запросом для выполнения поиска."
+    }), 200
+
 # Маршрут для выполнения поиска
 @app.route('/api/search', methods=['GET', 'POST'])
 def search_catalog():
     if request.method == 'GET':
+        # GET-запрос к /api/search возвращает инструкцию
         return jsonify({
             "status": "info",
             "message": "API маршрут активен. Используйте метод POST с JSON-телом {'queries': ['ваш запрос']} для поиска."
