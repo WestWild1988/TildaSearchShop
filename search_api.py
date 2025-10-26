@@ -1,36 +1,49 @@
 from flask import Flask, request, jsonify
-import random # Используем для генерации случайных цен
+import random
+import requests # Для имитации запроса к внешнему ресурсу (например, Яндексу)
+from bs4 import BeautifulSoup # Для имитации парсинга
+import time # Для имитации задержки сети
 
 # Инициализация приложения Flask
 app = Flask(__name__)
 
-# --- ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ MOCK-ДАННЫХ (для соответствия требованиям фронтенда) ---
-def generate_mock_results(query):
-    """Генерирует 20 структурированных результатов для имитации реального поиска."""
+# --- ФУНКЦИЯ ДЛЯ ИМИТАЦИИ ПАРСИНГА ЯНДЕКС (Заменит generate_mock_results) ---
+def perform_yandex_search(query):
+    """
+    Имитирует выполнение поиска через Requests и BeautifulSoup.
+    ВРЕМЕННО возвращает структурированный Mock-массив,
+    чтобы соответствовать требованиям фронтенда, пока не будет реализован реальный парсинг.
+    """
+    print(f"Выполнение имитации запроса к внешнему источнику для: {query}")
+    
+    # Имитация сетевой задержки (для реалистичности)
+    time.sleep(0.5) 
+
+    # --- СЕКЦИЯ, КОТОРУЮ НЕОБХОДИМО ЗАМЕНИТЬ РЕАЛЬНОЙ ЛОГИКОЙ ПАРСИНГА ---
+    
     mockData = []
-    # Базовая цена для разнообразия
     basePrice = random.randint(10000, 60000) 
 
     for i in range(20):
-        # Генерируем цену, слегка отличающуюся от базовой
+        # Генерируем данные с учетом реальных полей, ожидаемых фронтендом
         price = basePrice + (1000 * i) - (500 * (i % 2))
-        # Присваиваем rank 1 только первому элементу, остальные случайные
         rank = 1 if i == 0 else random.randint(2, 6)
         
         mockData.append({
             "id": i + 1,
-            "title": f"{query} — Результат №{i + 1}",
-            "snippet": f"Краткое описание товара, найденного по запросу '{query}' в интернет-источнике.",
-            "uri": f"https://example.com/item/{i + 1}",
-            "source": f"Источник {chr(65 + i // 5)}", # A, B, C, D
-            "price": max(100, price), # Цена не может быть меньше 100
+            "title": f"[ЯНДЕКС ИМИТАЦИЯ] {query} — Результат №{i + 1}",
+            "snippet": f"Это краткое описание имитирует результат, полученный парсингом Яндекс. Мы нашли отличные цены на {query}.",
+            "uri": f"https://mock-yandex.com/item/{i + 1}",
+            "source": f"Яндекс.Маркет Имитация {chr(65 + i // 5)}", 
+            "price": max(100, price), 
             "rank": rank 
         })
     
-    # Сортируем по цене, как требует фронтенд, чтобы имитировать реальную логику
+    # Сортируем по цене, как требует фронтенд
     mockData.sort(key=lambda x: x['price'])
     return mockData
 
+# --- МАРШРУТ API ---
 @app.route('/api/search', methods=['POST'])
 def search_catalog():
     # 1. Обработка входящего JSON
@@ -47,19 +60,20 @@ def search_catalog():
             "error": "Отсутствует или неверный параметр 'queries'. Ожидается массив строк."
         }), 400
 
-    # Используем первый запрос из массива для генерации Mock-данных
+    # Используем первый запрос из массива для выполнения поиска
     query_to_use = queries[0]
-    results = generate_mock_results(query_to_use)
+    
+    # Вызываем функцию, имитирующую поиск
+    results = perform_yandex_search(query_to_use)
 
-    # 3. Возвращаем успешный ответ со структурой, которую ожидает фронтенд
-    # (массив results с полями title, snippet, uri, source, price, rank)
+    # 3. Возвращаем успешный ответ
     return jsonify({
         "status": "success",
         "query_used": query_to_use,
         "results_count": len(results),
-        "results": results # Главный массив данных
+        "results": results 
     }), 200
 
-# Это нужно, если вы запускаете локально, но Render использует Gunicorn
+# Для локального запуска
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
