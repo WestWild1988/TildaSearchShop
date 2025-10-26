@@ -1,14 +1,24 @@
 from flask import Flask, request, jsonify
-# Импортируем логику поиска, которую мы будем разрабатывать
-from tilda_search import run_search 
 
 app = Flask(__name__)
+
+# --- ВРЕМЕННАЯ ФУНКЦИЯ-ЗАГЛУШКА (run_search) ---
+# Эта функция должна быть в отдельном файле, но временно помещена сюда,
+# чтобы Gunicorn не падал при запуске на Render.
+def run_search(query: str) -> list[dict]:
+    """Тестовая заглушка для проверки маршрутов."""
+    if query.lower() == "тестовый запрос для успеха":
+        return [
+            {"name": "Тестовый товар 1", "price": 1000},
+            {"name": "Тестовый товар 2", "price": 2500}
+        ]
+    return []
 
 # --- МАРШРУТ 1: ГЛАВНАЯ СТРАНИЦА (ДЛЯ ТЕСТИРОВАНИЯ АКТИВНОСТИ) ---
 # Этот маршрут будет отвечать на GET-запросы по адресу https://tildasearchshop.onrender.com/
 @app.route('/', methods=['GET'])
 def index():
-    # Возвращаем простой HTML, который подтверждает, что сервер работает
+    # Возвращаем простое сообщение, которое подтверждает, что сервер работает
     return """
         <!DOCTYPE html>
         <html>
@@ -23,7 +33,6 @@ def index():
     """, 200
 
 # --- МАРШРУТ 2: API ПОИСКА (ОСНОВНАЯ ФУНКЦИЯ) ---
-# Этот маршрут обрабатывает запросы поиска, отправленные из Canvas
 @app.route('/api/search', methods=['POST'])
 def search_catalog():
     try:
@@ -31,21 +40,15 @@ def search_catalog():
         query = data.get('query')
 
         if not query:
-            # 400 Bad Request: Отсутствует поисковый запрос
             return jsonify({"error": "Поле 'query' обязательно для заполнения."}), 400
 
-        # Вызов реальной функции поиска из tilda_search.py
-        # В данный момент эта функция возвращает тестовые данные, если query == "тестовый запрос для успеха"
+        # Вызов временной функции-заглушки run_search
         results = run_search(query) 
         
         if results:
-            # 200 OK: Успешный ответ с найденными товарами
             return jsonify({"query": query, "results": results}), 200
         else:
-            # 404 Not Found: Ничего не найдено
             return jsonify({"error": f"Ничего не найдено в каталоге по запросу: {query}"}), 404
 
     except Exception as e:
-        # Обработка непредвиденных ошибок сервера
-        # print(f"Критическая ошибка: {e}") 
         return jsonify({"error": "Внутренняя ошибка сервера", "details": str(e)}), 500
