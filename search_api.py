@@ -2,7 +2,6 @@ import os
 import re
 import time
 import random
-import json # Добавляем для более удобного логирования JSON
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from bs4 import BeautifulSoup
@@ -36,74 +35,76 @@ BASE_HEADERS = {
 def generate_mock_results(query: str) -> list[dict]:
     """
     Генерирует 20 уникальных, реалистичных мок-результатов для пагинации
-    и для демонстрации логики поиска.
+    и сортировки. Эта функция имитирует результат двухэтапного поиска.
+    
+    :param query: Основной поисковый запрос.
+    :return: Список объектов-результатов.
     """
     results = []
-    # Для отладки используем фиксированный список сайтов и немного меняем цены
-    SOURCES = ["pop-music.ru", "muz-torg.ru", "pro-sound.ru", "audiomania.ru"]
-    BASE_PRICE = 20000 
     
-    for i in range(1, REQUIRED_RESULTS + 1):
-        # Имитируем небольшое ранжирование
-        rank = 1 if i % 5 == 0 else random.randint(2, 5)
-
-        # Случайное изменение цены
-        price_offset = random.randint(-2000, 3000)
-        price = BASE_PRICE + price_offset
-
-        source = random.choice(SOURCES)
+    # Имитируем разные магазины
+    sources = [
+        "pop-music.ru", "muztorg.ru", "djdome.ru", "sindor.pro", 
+        "audiomania.ru", "prodevice.ru", "market-pro.ru", "a&t-trade.ru"
+    ]
+    
+    # Имитируем 20 результатов
+    for i in range(REQUIRED_RESULTS):
+        # Генерируем уникальную цену, чтобы обеспечить хорошую сортировку
+        # Цены в рублях (₽), округлены до сотен
+        price = random.randint(15000, 150000) * (1 + (i % 5) * 0.01)
+        price = int(round(price, -2)) 
+        
+        # Имитация названия товара
+        product_name_part = query.replace(' equipment', '').strip()
+        brand = random.choice(["Shure", "Sennheiser", "AKG", "Neumann", "Rode"])
+        model = f"{brand} {product_name_part} Model V{random.randint(1, 10)}{random.choice(['A', 'B', 'C'])}"
+        
+        # Имитация сниппета
+        snippet = f"Профессиональный динамический {product_name_part.lower()} для студийной и сценической работы. В наличии. Доставка от {random.randint(2, 7)} дней."
+        
+        # Имитация URI и Source
+        source = random.choice(sources)
+        uri = f"https://www.{source}/product/{i+1}/{model.replace(' ', '-').lower()}"
+        
+        # Имитация ранга (для выделения лучших)
+        rank = 1 if i == 0 else random.randint(2, 10)
         
         results.append({
-            "title": f"Микрофон Shure SM58 BETA (Mock #{i}) от {query}",
-            "snippet": f"Профессиональный динамический микрофон. Отличное качество звука для живых выступлений. Предложение с сайта {source}.",
-            "uri": f"https://www.{source}/product/shure-mock-{i}",
+            "title": model,
+            "snippet": snippet,
+            "uri": uri,
             "source": source,
             "price": price,
-            "rank": rank,
-            "currency": "₽"
+            "rank": rank
         })
     
-    # Сортируем по цене, как требует логика
-    results.sort(key=lambda x: x['price'])
+    # Мок-данные возвращаются несортированными, 
+    # сортировка будет выполняться на фронтенде согласно правилам.
     return results
-
-def scrape_product_page(url: str) -> dict or None:
-    """
-    Имитирует скрапинг отдельной страницы товара. 
-    В реальном приложении здесь будет логика парсинга HTML.
-    """
-    # Имитируем задержку
-    time.sleep(random.uniform(0.1, 0.5)) 
-    return None # Не возвращаем ничего, т.к. generate_mock_results уже сформировал данные
-
-# ==============================================================================
-# ОСНОВНАЯ ЛОГИКА ПОИСКА (ДВУХЭТАПНАЯ ИМИТАЦИЯ)
-# ==============================================================================
 
 def two_stage_search(query: str) -> tuple[list[dict], int]:
     """
-    Имитация двухэтапного поиска:
-    1. Получение ссылок (имитируется)
-    2. Скрапинг страниц (имитируется)
+    Имитирует основную логику двухэтапного поиска (Stage I & II).
+    В реальном приложении здесь будет логика вызова поискового API и скрапинга.
+    
+    :param query: Основной поисковый запрос (берется первый из массива 'queries').
+    :return: Список результатов и статус-код.
     """
-    print(f"[{time.strftime('%H:%M:%S')}] [STAGE 1] Имитация поиска ссылок для: '{query}'...")
+    # Имитация задержки API
+    time.sleep(random.uniform(1.0, 3.0)) 
     
-    # 1. Имитация получения ссылок
-    # В реальном приложении: links = get_search_links(query)
-    # Для отладки мы просто генерируем мок-данные
-    
-    # 2. Имитация скрапинга
-    print(f"[{time.strftime('%H:%M:%S')}] [STAGE 2] Имитация сбора данных...")
-    
-    # Генерируем все 20 мок-результатов сразу
-    final_results = generate_mock_results(query)
+    if "ошибка" in query.lower():
+        # Имитация ошибки на стороне бэкенда
+        return {"error": "Имитация внутренней ошибки сервера (500)."}, 500
         
-    # 3. Возвращаем результат
-    if not final_results:
+    # Возвращаем мок-результаты
+    results = generate_mock_results(query)
+    
+    if not results:
         return {"error": f"Ничего не найдено после двухэтапного поиска по запросу: {query}"}, 404
             
-    return final_results, 200
-
+    return results, 200
 
 # ==============================================================================
 # FLASK ROUTE
@@ -116,16 +117,12 @@ def search_endpoint():
     Ожидает JSON-тело с полем 'queries' (массив строк), как требует фронтенд.
     """
     
-    # ******************************************************************************
-    # ОТЛАДОЧНАЯ ЛОГИКА: УНИКАЛЬНАЯ МЕТКА ДЛЯ ПОДТВЕРЖДЕНИЯ ЗАПУСКА СКРИПТА
-    # ******************************************************************************
-    current_time = time.strftime('%Y-%m-%d %H:%M:%S')
-    print(f"\n[{current_time}] --- БЭКЕНД АКТИВЕН (search_api.py) ---")
-
-
+    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Теперь проверяем наличие 'queries'
     if not request.json or 'queries' not in request.json or not isinstance(request.json['queries'], list):
-        print(f"[{current_time}] ОШИБКА 400: Неверный формат запроса. Получено: {request.json}")
-        return jsonify({"error": "Требуется JSON-тело с полем 'queries' (массив строк). Фронтенд check."}), 400
+        # Эта ошибка 400 должна быть возвращена, если фронтенд отправляет неверный формат
+        error_message = "Требуется JSON-тело с полем 'queries' (массив строк)."
+        print(f"[{time.strftime('%H:%M:%S')}] ОШИБКА 400: Неверный формат запроса. Детали: {error_message}")
+        return jsonify({"error": error_message}), 400
 
     queries = request.json['queries']
     
@@ -133,15 +130,7 @@ def search_endpoint():
     # для логики двухэтапного поиска.
     main_query = queries[0] if queries else "generic audio equipment" 
 
-    # ******************************************************************************
-    # ОТЛАДОЧНАЯ ЛОГИКА: ВЫВОД ПОЛУЧЕННЫХ ДАННЫХ
-    # ******************************************************************************
-    print(f"[{current_time}] Принят запрос. Основной query: '{main_query}'")
-    try:
-        # Пытаемся красиво вывести весь полученный JSON
-        print(f"[{current_time}] JSON-тело: {json.dumps(request.json, indent=2)}")
-    except Exception as e:
-        print(f"[{current_time}] Ошибка при парсинге JSON для вывода: {e}")
+    print(f"[{time.strftime('%H:%M:%S')}] Принят запрос. Основной query: '{main_query}', весь массив: {queries}")
 
     # 1. Выполняем логику двухэтапного поиска
     results, status_code = two_stage_search(main_query)
@@ -155,9 +144,11 @@ def health_check():
     """
     Проверка работоспособности сервиса.
     """
-    return jsonify({"status": "ok", "service": "psp-search-backend (Two-Stage Scraping Mock)"})
+    return jsonify({"status": "ok", "service": "psp-search-backend (Mock Two-Stage Scraping)"}), 200
+
 
 if __name__ == '__main__':
-    # Если вы запускаете этот файл напрямую, Flask будет запущен
-    print("Запуск Flask-сервера...")
-    app.run(debug=True, port=5000)
+    # При запуске локально, используем стандартный порт 5000
+    port = int(os.environ.get('PORT', 5000))
+    # Включаем отладочный режим только для локальной разработки
+    app.run(debug=True, host='0.0.0.0', port=port)
