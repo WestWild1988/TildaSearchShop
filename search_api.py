@@ -1,45 +1,37 @@
-# Содержимое файла search_api.py (Пример структуры)
-
 from flask import Flask, request, jsonify
-from yourapp_package.search_logic import run_search  # Предполагается, что здесь ваша основная логика
 
+# Инициализация приложения Flask
 app = Flask(__name__)
 
-# Маршрут для выполнения поиска
 @app.route('/api/search', methods=['POST'])
-def search():
-    """
-    Принимает JSON с полем 'query' и возвращает результаты поиска.
-    """
+def search_catalog():
+    # --- БЛОК ОТЛАДКИ (ВРЕМЕННЫЙ КОД) ---
+    
+    # 1. Пытаемся получить входящие данные JSON
     try:
-        # Проверка, что запрос содержит данные JSON
-        if not request.is_json:
-            return jsonify({"error": "Missing JSON in request"}), 400
-
         data = request.get_json()
-        query = data.get('query')
-
-        if not query:
-            return jsonify({"error": "Missing 'query' parameter"}), 400
-
-        # Выполнение основной логики поиска (имитация)
-        # Здесь должна быть ваша реальная функция run_search(query)
-        results = [{"id": 1, "title": f"Результат для: {query}", "link": "#"}]
-        
-        # Если ваша логика требует больше времени, вы можете увидеть в логах Render
-        # задержку, связанную с выполнением этого шага.
-
-        return jsonify({
-            "status": "success",
-            "query": query,
-            "results_count": len(results),
-            "results": results
-        }), 200
-
     except Exception as e:
-        # Обработка непредвиденных ошибок
-        return jsonify({"status": "error", "message": str(e)}), 500
+        # Если JSON не пришел или невалиден
+        return jsonify({
+            "error": "Не удалось распарсить JSON-тело запроса.",
+            "exception": str(e)
+        }), 400
 
+    # 2. Формируем ответ, включающий все полученные данные
+    debug_response = {
+        "status": "ОТЛАДКА УСПЕШНА (DEBUG SUCCESS)",
+        "message": "Скрипт на сервере Render был успешно вызван и получил следующие данные:",
+        "received_data": data,
+        "received_query": data.get('query') if data and 'query' in data else 'Поле query не найдено',
+        "method": request.method,
+        "path": request.path
+    }
+
+    # 3. Возвращаем успешный ответ (200 OK) с отладочной информацией
+    return jsonify(debug_response), 200
+
+    # --- КОНЕЦ БЛОКА ОТЛАДКИ ---
+
+# Это нужно, если вы запускаете локально, но Render использует Gunicorn
 if __name__ == '__main__':
-    # Запуск для локального тестирования
     app.run(host='0.0.0.0', port=5000)
