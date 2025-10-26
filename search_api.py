@@ -1,6 +1,5 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from flask_cors import CORS 
-import random
 import time
 import re
 from requests.exceptions import RequestException
@@ -11,152 +10,154 @@ import requests
 app = Flask(__name__)
 CORS(app) 
 
-# --- КОНСТАНТЫ ДЛЯ РЕАЛЬНОГО (НО ОГРАНИЧЕННОГО) ПОИСКА ---\
-# Запросы направляются к Google Search с указанием локализации, 
-# что имитирует поиск в РФ/СНГ.
+# --- КОНСТАНТЫ ДЛЯ РЕАЛЬНОГО ПОИСКА ---
+# Запросы направляются к Google Search с указанием локализации RU
 SEARCH_URL_RU = "https://www.google.com/search?hl=ru&gl=ru&q="
+# Для двуязычности (хотя парсим только RU, EN запрос используется для архитектуры)
 SEARCH_URL_EN = "https://www.google.com/search?hl=en&gl=us&q=" 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# --- ФУНКЦИИ ОБРАБОТКИ ДАННЫХ (СИМУЛЯЦИЯ ИЗ-ЗА ОГРАНИЧЕНИЙ) ---
+# --- ФУНКЦИИ РЕАЛЬНОГО ПАРСИНГА ---
 
-def extract_price(text: str) -> float:
+def extract_price_and_source(text: str) -> tuple[float, str]:
     """
-    ВНИМАНИЕ: Из-за нестабильности и блокировки со стороны внешних
-    поисковых систем (Google, Яндекс) при автоматическом парсинге,
-    данная функция генерирует случайную, но реалистичную цену.
+    Пытается извлечь реальную цену и источник из сниппета или заголовка.
+    Возвращает (price: float, source: str).
+    Если цена не найдена, возвращает 999999.0 и "Неизвестный Источник".
+    """
     
-    Для реального поиска потребовались бы платные API или сложные
-    системы проксирования.
-    """
-    # Генерация цены в диапазоне 15 000 - 65 000 рублей
-    return random.randint(15000, 55000) + random.randint(0, 10000)
+    # 1. Извлечение цены (поиск чисел, похожих на рубли или общую цену)
+    
+    # Регулярное выражение для поиска цен: число с пробелами или запятыми, 
+    # за которым может следовать 'руб', 'р', '₽' или 'USD', 'EUR'.
+    # Мы отдаем предпочтение большим числам (цены на оборудование)
+    price_match = re.search(r'(\d[\s\d\.\,]*)\s*(?:руб|р\.|₽|USD|EUR)', text, re.IGNORECASE)
+    
+    if price_match:
+        price_str = price_match.group(1).replace(' ', '').replace(',', '.')
+        try:
+            # Преобразуем в число. Если это USD/EUR, делаем грубую конвертацию для симуляции РФ рынка.
+            price = float(price_str)
+            if 'USD' in price_match.group(0).upper() or 'EUR' in price_match.group(0).upper():
+                price = price * 80 # Грубый курс для имитации рублевой цены
+            
+            # Убеждаемся, что цена выглядит как цена оборудования, а не как дата
+            if price < 1000:
+                 return 999999.0, "Неизвестный Источник"
 
-def extract_simulated_real_data(soup: BeautifulSoup) -> list:
-    """
-    Имитация извлечения структурированных данных (заголовок, сниппет, URI).
+            return round(price, 2), "Парсинг Цены"
+        except ValueError:
+            pass
     
-    * Фактически извлекаются только заголовки и ссылки с Google.
-    * Поля 'price' и 'source' генерируются случайным образом
-      для соответствия требованиям фронтенда (Rule 2.3).
-    """
-    raw_results = []
-    
-    # Поиск по CSS-селекторам, которые Google использует для результатов.
-    # Это крайне нестабильный метод.
-    
-    # 1. Извлекаем блоки (заголовки h3, внутри которых ссылки)
-    h3_elements = soup.find_all('h3', class_='LC20lb')
-    
-    for h3 in h3_elements:
-        link = h3.parent.get('href') # Ссылка обычно находится в родительском теге <a>
-        # Google может изменять структуру, поэтому используем безопасный поиск сниппета
-        snippet_container = h3.parent.parent.find_next_sibling('div') 
+    # 2. Поиск крупных торговых площадок как источника
+    source = "Неизвестный Источник"
+    for s in ["Яндекс.Маркет", "Ozon", "AliExpress", "Avito", "MusicStore.ru"]:
+        if s.lower() in text.lower():
+            source = s
+            break
+            
+    # Если цена не найдена, используем очень высокую цену для отправки в конец списка
+    return 999999.0, source
 
-        # Проверка наличия и структуры
-        if link and link.startswith('http'):
-            # Попытка извлечь сниппет (краткое описание)
-            snippet_text = snippet_container.get_text() if snippet_container else "Краткое описание товара недоступно."
 
-            raw_results.append({
-                "title": h3.get_text(),
-                "snippet": snippet_text,
-                "uri": link,
+def extract_real_data(soup: BeautifulSoup) -> list:
+    """
+    Парсит HTML-суп Google для извлечения 20 структурированных результатов.
+    Пытается извлечь title, snippet, uri и вызывает функцию для price/source.
+    """
+    results = []
+    
+    # Поиск всех основных блоков результатов
+    # Ищем все контейнеры, содержащие ссылки
+    search_results = soup.find_all('div', class_='g')
+    
+    for div_result in search_results:
+        # Ищем заголовок (h3) и ссылку (a) внутри блока
+        h3_title = div_result.find('h3')
+        a_tag = div_result.find('a')
+        snippet_div = div_result.find('div', class_='VwiC3b') or div_result.find('span', class_='aCOpRe')
+        
+        if h3_title and a_tag and 'href' in a_tag.attrs:
+            title = h3_title.get_text()
+            uri = a_tag['href']
+            snippet = snippet_div.get_text() if snippet_div else "Сниппет не найден."
+            
+            # 1. Очищаем URI
+            match = re.search(r'/url\?q=([^&]+)', uri)
+            if match:
+                uri = match.group(1)
+            
+            # 2. Реальное извлечение цены и источника
+            price, source = extract_price_and_source(title + " " + snippet)
+
+            results.append({
+                "id": len(results) + 1,
+                "title": title,
+                "snippet": snippet,
+                "uri": uri,
+                "source": source,
+                "price": price,
+                "rank": 0,
             })
-            if len(raw_results) >= 20:
-                break
-
-    # 2. Обогащение и ранжирование (с использованием имитации)
-    final_results = []
-    source_options = ["Яндекс.Маркет", "Ozon", "MusicStore.ru", "Avito Pro"]
-    
-    for i, item in enumerate(raw_results):
         
-        # Генерируем цены и источники (имитация реального парсинга)
-        price = extract_price(item['title']) 
-        source = random.choice(source_options)
-        
-        final_results.append({
-            "id": i + 1,
-            "title": item['title'],
-            "snippet": item['snippet'],
-            "uri": item['uri'],
-            "source": source,
-            "price": price,
-            "rank": 0,
-        })
-
-    if not final_results:
-         print("ЛОГ БЭКЕНДА: Не удалось извлечь структурированные данные. Возврат пустого списка.")
-         return []
+        if len(results) >= 20: # Rule 2.4.a: ограничение до 20
+            break
 
     # 3. Сортируем и устанавливаем ранг (Rule 2.4.b)
-    final_results.sort(key=lambda x: x['price'])
+    # Сортируем по цене (самая низкая - первая)
+    results.sort(key=lambda x: x['price'])
     
-    if final_results:
-        # Устанавливаем ранг 1 для самого дешевого (Rule 4.4)
-        final_results[0]['rank'] = 1 
+    if results:
+        # Устанавливаем ранг 1 для самого дешевого
+        results[0]['rank'] = 1 
+        results[0]['title'] += " [ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ!]"
 
-    print(f"ЛОГ БЭКЕНДА: Возвращается {len(final_results)} отсортированных результатов.")
-    return final_results
+    print(f"ЛОГ БЭКЕНДА: Возвращается {len(results)} отсортированных результатов после реального парсинга.")
+    return results
 
 
 def perform_google_search(query_ru: str, query_en: str) -> list:
     """
-    Выполняет реальный запрос к Google, но парсинг цен имитируется.
+    Выполняет реальный HTTP-запрос к Google Search и парсит результаты.
+    Используется русский запрос (query_ru) для поиска в РФ/СНГ локализации.
     """
-    start_time = time.time()
-    
-    # Мы используем русский запрос для поиска, как наиболее релевантный рынку РФ/СНГ
-    search_query = f"{query_ru} купить цена" # Добавляем ключевые слова для релевантности
-    url = SEARCH_URL_RU + requests.utils.quote(search_query) 
+    # Используем русский запрос и локализацию
+    url = SEARCH_URL_RU + requests.utils.quote(query_ru)
     
     headers = {'User-Agent': USER_AGENT}
     
-    print(f"ЛОГ БЭКЕНДА: Запрос к Google RU: {url}")
+    print(f"ЛОГ БЭКЕНДА: Выполняется РЕАЛЬНЫЙ HTTP-запрос к Google (RU): {url}")
     
-    response = requests.get(url, headers=headers, timeout=10) # 10 секунд на таймаут
-    response.raise_for_status() # Вызывает исключение для 4xx/5xx ошибок
+    # Имитация задержки сети и обхода блокировок
+    time.sleep(2) 
+    
+    response = requests.get(url, headers=headers, timeout=15)
+    response.raise_for_status() # Вызовет исключение при плохих статусах (4xx, 5xx)
 
+    # Парсинг и обработка
     soup = BeautifulSoup(response.text, 'html.parser')
+    results = extract_real_data(soup)
     
-    # Извлекаем данные (включая имитацию цен и источников)
-    results = extract_simulated_real_data(soup)
-    
-    # Возвращаем результаты (максимум 20)
-    print(f"ЛОГ БЭКЕНДА: Время парсинга: {round(time.time() - start_time, 2)} сек.")
     return results
 
-@app.route('/', methods=['GET'])
-def index():
-    """Ответ на базовый URL для предотвращения 404 ошибки."""
-    return jsonify({
-        "status": "info",
-        "message": "PSP Equipment Search API is running.",
-        "usage": "Use POST method to /api/search with JSON body: {'queries': ['your query']}"
-    }), 200
+# --- API МАРШРУТ ---
 
 @app.route('/api/search', methods=['GET', 'POST'])
 def search_catalog():
     start_time = time.time()
     
-    # Если это GET запрос, возвращаем инструкцию (для тестирования в браузере)
     if request.method == 'GET':
         return jsonify({
             "status": "info",
-            "message": "API endpoint is active. Use the POST method with a JSON body to execute a search.",
-            "example_body": "{'queries': ['Shure SM58', 'Shure SM58 price']}"
+            "message": "API маршрут активен. Используйте метод POST с JSON-телом {'queries': ['ваш запрос']} для реального поиска."
         }), 200
 
-    # Если это POST запрос, выполняем поиск
-    
-    # 1. Обработка входящего JSON
+    # Обработка POST-запроса
     try:
         data = request.get_json()
     except Exception:
-        return jsonify({"error": "Не удалось распарсить JSON-тело запроса."}), 400
+        return jsonify({"status": "error", "message": "Не удалось распарсить JSON-тело запроса."}), 400
 
-    # 2. Извлекаем массив 'queries' (Rule 2.2.a)
     queries = data.get('queries')
     
     if not queries or not isinstance(queries, list) or not queries[0]:
@@ -164,23 +165,28 @@ def search_catalog():
             "error": "Отсутствует или неверный параметр 'queries'. Ожидается массив строк."
         }), 400
 
-    # Используем первый запрос (русский) и второй (английский, если есть)
     query_ru = queries[0]
     query_en = queries[1] if len(queries) > 1 else query_ru 
 
-    
-    # 3. Вызываем функцию "реального" поиска
+    # Вызываем функцию реального поиска
     try:
-        # Запускаем поиск к Google и обработку результатов
         results = perform_google_search(query_ru, query_en)
         
     except RequestException as e:
         # Обработка ошибок, связанных с внешними запросами 
-        print(f"ЛОГ БЭКЕНДА: Критическая ошибка сети при выполнении поиска: {e}")
-        return jsonify({"status": "error", "message": f"Критическая ошибка сети при подключении к поисковому сервису. Попробуйте снова. ({e})"}), 500
+        print(f"ЛОГ БЭКЕНДА: Критическая ошибка сети/CAPTHA при выполнении поиска: {e}")
+        # Возвращаем понятное сообщение об ошибке
+        return jsonify({
+            "status": "error", 
+            "message": f"Ошибка поиска: Сервис временно заблокирован или требуется CAPTCHA. Попробуйте изменить запрос. ({e})"
+        }), 500
+    except Exception as e:
+        # Обработка других ошибок
+         print(f"ЛОГ БЭКЕНДА: Неизвестная ошибка: {e}")
+         return jsonify({"status": "error", "message": "Произошла неизвестная ошибка на сервере API."}, 500)
 
 
-    # 4. Возвращаем успешный ответ
+    # Возвращаем успешный ответ
     end_time = time.time()
     execution_time = round(end_time - start_time, 2)
     
@@ -189,10 +195,5 @@ def search_catalog():
         "query": query_ru, 
         "execution_time_seconds": execution_time,
         "results_count": len(results),
-        "results": results # Главный массив данных
+        "results": results
     }), 200
-
-# Для локального запуска
-if __name__ == '__main__':
-    # В реальной среде это должно запускаться через Gunicorn
-    app.run(host='0.0.0.0', port=5000, debug=True)
