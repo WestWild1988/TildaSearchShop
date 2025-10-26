@@ -6,9 +6,9 @@ import time
 app = Flask(__name__)
 
 # --- HTML-КОД КЛИЕНТСКОГО ПРИЛОЖЕНИЯ ---
-# Вся HTML/CSS/JS логика, которую мы разработали, помещается сюда.
-# Она будет возвращаться при GET-запросе на /api/search.
-HTML_CONTENT = """
+# Используем ТРОЙНЫЕ ОДИНАРНЫЕ кавычки (''') для определения HTML_CONTENT, 
+# чтобы избежать конфликта с тройными двойными кавычками (""") в JS/HTML.
+HTML_CONTENT = '''
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -201,6 +201,8 @@ HTML_CONTENT = """
                 minimumFractionDigits: 0 
             }).format(item.price);
 
+            // Обратите внимание: все кавычки в JS/HTML одинарные или двойные, 
+            // чтобы не конфликтовать с ''' в Python
             return `
                 <div class="equipment-card p-4 rounded-xl shadow-lg relative flex flex-col justify-between h-full">
                     ${item.rank === 1 ? 
@@ -352,9 +354,9 @@ HTML_CONTENT = """
                 elements.status.textContent = `КРИТИЧЕСКАЯ ОШИБКА: Сервер недоступен или вернул некорректные данные. См. панель отладки.`;
 
                 if (rawResponse) {
-                    elements.debugResponse.textContent = `Ошибка: ${error.message}\\n\\nНеобработанный ответ:\\n${rawResponse}`;
+                    elements.debugResponse.textContent = `Ошибка: ${error.message}\n\nНеобработанный ответ:\n${rawResponse}`;
                 } else {
-                    elements.debugResponse.textContent = `Ошибка: ${error.message}\\n\\nСервер не ответил.`;
+                    elements.debugResponse.textContent = `Ошибка: ${error.message}\n\nСервер не ответил.`;
                 }
 
                 // Возвращаем пустой массив, заглушки удалены
@@ -454,7 +456,7 @@ HTML_CONTENT = """
     </script>
 </body>
 </html>
-"""
+''' # ЗАКРЫВАЕМ СТРОКУ ТРОЙНЫМИ ОДИНАРНЫМИ КАВЫЧКАМИ
 
 # --- ФУНКЦИЯ ДЛЯ ИМИТАЦИИ ПАРСИНГА ЯНДЕКС (БЕЗ ИЗМЕНЕНИЙ) ---
 def perform_yandex_search(query):
@@ -540,11 +542,3 @@ if __name__ == '__main__':
     # Внимание: для Render хост должен быть '0.0.0.0'
     # Используйте порт 5000 или тот, который требует Render
     app.run(host='0.0.0.0', port=5000)
-"""eof
-
-### Как это работает:
-
-1.  **GET-запрос (браузер):** Когда вы введете `https://tildasearchshop.onrender.com/api/search` в браузере, ваш скрипт получит **GET-запрос**. Он вернет полный HTML-код нашего интерфейса.
-2.  **POST-запрос (интерфейс):** Когда вы нажмете "Искать" в этом интерфейсе, JavaScript отправит **POST-запрос** на `/api/search` (то есть, на тот же адрес). Flask-скрипт обработает его и вернет JSON с 20 результатами.
-
-Теперь вы можете тестировать клиентское приложение и API, открыв только одну ссылку!
