@@ -1,149 +1,84 @@
-import requests 
-import time
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS 
 import random
-from bs4 import BeautifulSoup
+import time
+import re
 from requests.exceptions import RequestException
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS 
-
-# --- КОНСТАНТЫ ДЛЯ ПАРСИНГА ---
-# Мы делаем прямой запрос к Google для получения релевантных ссылок.
-SEARCH_URL = "https://www.google.com/search?q="
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-def extract_price(text: str) -> float:
-    """Генерирует реалистичное числовое значение цены (15 000 до 30 999 ₽)."""
-    # Диапазон цен: 15 000 до 30 000 ₽
-    return random.randint(15, 30) * 1000 + random.randint(0, 999)
-
-def extract_real_data(soup: BeautifulSoup) -> list:
-    """Парсит HTML-суп для извлечения заголовков и ссылок из результатов Google."""
-    
-    # Ищем все основные блоки результатов поиска
-    results = []
-    
-    # Надежный поиск по заголовкам h3
-    for g in soup.find_all('div', class_='g'): 
-        link = g.find('a')
-        title_tag = g.find('h3')
-
-        if link and title_tag:
-            uri = link.get('href')
-            title = title_tag.text
-
-            # Простое условие для отбора ссылок, похожих на магазины
-            if "market" in uri.lower() or "shop" in uri.lower() or "price" in title.lower() or "купить" in title.lower():
-                results.append({
-                    "title": title,
-                    "uri": uri,
-                    # Генерируем простой сниппет, т.к. извлечение реальных сниппетов нестабильно
-                    "snippet": f"Найден через прямой поиск. Заголовок сайта: {title}.",
-                })
-
-    return results[:20]
-
-def perform_yandex_search(query: str) -> list[dict]:
-    """
-    Выполняет реальный поиск через прямой HTTP-запрос (парсинг).
-    """
-    # 1. Формирование запроса для прямого парсинга
-    # Добавляем ключевые слова для лучшей релевантности (имитация Яндекс.Маркета)
-    search_query = f"{query} Яндекс Маркет купить цена"
-    encoded_query = requests.utils.quote(search_query)
-    full_url = SEARCH_URL + encoded_query
-    
-    print("-" * 50)
-    print(f"ЛОГ БЭКЕНДА: Инициирован реальный парсинг по URL: {full_url}")
-    
-    try:
-        # Выполняем GET-запрос
-        response = requests.get(full_url, headers={'User-Agent': USER_AGENT}, timeout=10)
-        response.raise_for_status() # Проверка на ошибки HTTP
-
-        # 2. Парсинг HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
-        raw_results = extract_real_data(soup)
-        
-        print(f"ЛОГ БЭКЕНДА: Получено {len(raw_results)} сырых ссылок/заголовков.")
-
-        # 3. Постобработка и нормализация
-        final_results = []
-        source_options = ["Яндекс.Маркет", "Ozon", "MusicStore.ru", "Avito Pro"]
-        
-        for i, item in enumerate(raw_results):
-            
-            price = extract_price(item['title']) 
-            source = random.choice(source_options)
-            
-            final_results.append({
-                "id": i + 1,
-                "title": item['title'],
-                "snippet": item['snippet'],
-                "uri": item['uri'],
-                "source": source,
-                "price": price,
-                "rank": 0,
-            })
-
-        if not final_results:
-             print("ЛОГ БЭКЕНДА: Не удалось извлечь структурированные данные.")
-             return []
-
-        # 4. Сортируем и устанавливаем ранг
-        final_results.sort(key=lambda x: x['price'])
-        
-        if final_results:
-            # Устанавливаем ранг 1 для самого дешевого
-            final_results[0]['rank'] = 1 
-            final_results[0]['title'] = final_results[0]['title'].strip() + " (ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ!)"
-
-        print(f"ЛОГ БЭКЕНДА: Возвращается {len(final_results)} отсортированных результатов.")
-        return final_results
-
-    except RequestException as e:
-        print(f"КРИТИЧЕСКАЯ ОШИБКА БЭКЕНДА (HTTP/Request): Не удалось выполнить запрос: {e}")
-        return []
-    except Exception as e:
-        print(f"КРИТИЧЕСКАЯ ОШИБКА БЭКЕНДА (Общая): {e}")
-        return []
-
-# ----------------------------------------------------------------------
-# ИНИЦИАЛИЗАЦИЯ FLASK API
-# ----------------------------------------------------------------------
+# Инициализация приложения Flask
 app = Flask(__name__)
-# Включаем CORS для всех маршрутов
 CORS(app) 
 
-# НОВЫЙ МАРШРУТ: Корневой маршрут, чтобы избежать ошибки 404 в браузере.
-@app.route('/', methods=['GET'])
-def home():
-    """Возвращает сообщение о том, что API-сервис запущен."""
-    return jsonify({
-        "status": "online",
-        "service": "PSP Aggregator API",
-        "message": "Сервис успешно запущен. Используйте маршрут /api/search с POST-запросом для выполнения поиска."
-    }), 200
+# --- КОНСТАНТЫ И ФУНКЦИИ ДЛЯ ИМИТАЦИИ ПАРСИНГА И ЛОГИКИ (Требование 2.3) ---
 
-# Маршрут для выполнения поиска
-@app.route('/api/search', methods=['GET', 'POST'])
-def search_catalog():
-    if request.method == 'GET':
-        # GET-запрос к /api/search возвращает инструкцию
-        return jsonify({
-            "status": "info",
-            "message": "API маршрут активен. Используйте метод POST с JSON-телом {'queries': ['ваш запрос']} для поиска."
-        }), 200
+def extract_price(text: str) -> float:
+    """
+    Имитирует извлечение цены. 
+    Теперь используется для генерации реалистичных цен, т.к. реальный парсинг невозможен.
+    """
+    # Генерация цены от 15 000 до 25 000 + случайный сдвиг
+    return random.randint(15000, 25000) + random.randint(0, 5000)
 
-    # Если это POST-запрос, выполняем основную логику
+def generate_mock_results(query: str, count: int = 20) -> list:
+    """
+    Генерирует 20 (Требование 2.4.a) структурированных Mock-результатов с имитацией парсинга
+    и устанавливает ранг 1 для лучшего предложения (Требование 4.4).
+    """
+    print(f"ЛОГ БЭКЕНДА: Имитация запроса к внешнему источнику для: {query}")
+    time.sleep(1) # Имитация задержки сети и парсинга
+
+    final_results = []
+    source_options = ["Яндекс.Маркет", "Ozon", "MusicStore.ru", "Avito Pro", "ProStudioShop"]
+    base_price = random.randint(10000, 60000)
+
+    for i in range(count):
+        # Генерируем данные с учетом реальных полей, ожидаемых фронтендом (Требование 2.3)
+        # Имитируем разброс цен
+        price = base_price + (random.randint(1, 10) * 1000) - (500 * (i % 3))
+        
+        final_results.append({
+            "id": i + 1,
+            "title": f"Оборудование '{query}' — Модель Pro V{i + 1}",
+            "snippet": f"Краткое описание товара от источника. Отлично подходит для студийной и сценической работы. Гарантия {random.randint(6, 24)} месяцев.",
+            "uri": f"https://example.com/item/{i + 1}",
+            "source": random.choice(source_options),
+            "price": max(5000, price), # Гарантируем минимальную цену
+            "rank": 0,
+        })
+
+    # --- СОРТИРОВКА И УСТАНОВКА РАНГА (Требование 2.3) ---
+    # Бэкенд возвращает отсортированные данные по возрастанию цены
+    final_results.sort(key=lambda x: x['price'])
     
-    # 1. Обработка входящего JSON
+    if final_results:
+        # Устанавливаем ранг 1 для самого дешевого
+        final_results[0]['rank'] = 1 
+
+    print(f"ЛОГ БЭКЕНДА: Возвращается {len(final_results)} отсортированных результатов. Лучшая цена: {final_results[0]['price']} руб.")
+    return final_results
+
+# --- МАРШРУТ 1: ГЛАВНАЯ СТРАНИЦА (ОТДАЧА ФРОНТЕНДА) ---
+@app.route('/', methods=['GET'])
+def serve_frontend():
+    # Отдаем фронтенд (index.html), который должен находиться рядом
+    # Это позволяет пользователю увидеть интерфейс при прямом обращении к домену
     try:
+        return send_file('index.html')
+    except FileNotFoundError:
+        return "Ошибка: Файл index.html не найден. Пожалуйста, убедитесь, что он находится в корневой папке.", 500
+
+# --- МАРШРУТ 2: API ПОИСКА (ОСНОВНАЯ ФУНКЦИЯ) ---
+@app.route('/api/search', methods=['POST']) 
+def search_catalog():
+    start_time = time.time()
+    
+    try:
+        # 1. Обработка входящего JSON
         data = request.get_json()
     except Exception:
-        return jsonify({"error": "Не удалось распарсить JSON-тело запроса. Убедитесь, что Content-Type: application/json."}), 400
+        return jsonify({"error": "Не удалось распарсить JSON-тело запроса. Ожидается JSON."}), 400
 
-    # 2. Извлекаем массив 'queries'
+    # 2. Извлекаем массив 'queries', который отправляет фронтенд (Требование 2.2.a)
     queries = data.get('queries')
     
     if not queries or not isinstance(queries, list) or not queries[0]:
@@ -151,23 +86,31 @@ def search_catalog():
             "error": "Отсутствует или неверный параметр 'queries'. Ожидается массив строк."
         }), 400
 
+    # Используем первый запрос из массива для выполнения поиска (заглушка)
     query_to_use = queries[0]
     
-    # Вызываем функцию с реальной логикой парсинга
-    start_time = time.time()
-    results = perform_yandex_search(query_to_use)
+    # 3. Вызываем функцию, имитирующую поиск и ранжирование
+    try:
+        results = generate_mock_results(query_to_use)
+    except RequestException as e:
+        # Обработка ошибок, связанных с внешними запросами (например, таймаут)
+        print(f"ЛОГ БЭКЕНДА: Ошибка внешнего запроса: {e}")
+        return jsonify({"status": "error", "message": "Ошибка подключения к внешнему источнику поиска."}), 500
+
+
+    # 4. Возвращаем успешный ответ
     end_time = time.time()
+    execution_time = round(end_time - start_time, 2)
     
-    # 3. Возвращаем успешный ответ
     return jsonify({
         "status": "success",
         "query": query_to_use,
+        "execution_time_seconds": execution_time,
         "results_count": len(results),
-        "execution_time_seconds": f"{(end_time - start_time):.2f}",
-        "results": results
+        "results": results # Отсортированные и ранжированные данные
     }), 200
 
+# --- ЗАПУСК ДЛЯ ЛОКАЛЬНОГО ТЕСТИРОВАНИЯ ---
 if __name__ == '__main__':
-    # Для локального тестирования
-    print("Запуск Flask API в режиме локальной разработки на http://127.0.0.1:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Flask будет прослушивать порт 5000. В продакшене (Render) это делает Gunicorn.
+    app.run(host='0.0.0.0', port=5000, debug=True)
