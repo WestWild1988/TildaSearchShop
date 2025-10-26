@@ -1,50 +1,72 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS # Импорт модуля CORS
+from flask_cors import CORS, cross_origin # Импортируем cross_origin
+from tildasearchshop.search_logic import run_search
 
 app = Flask(__name__)
-# Инициализация CORS для разрешения запросов со всех доменов (по умолчанию)
+# Инициализация CORS для ВСЕГО приложения (этот способ надежнее для OPTIONS)
 CORS(app) 
 
-# Тестовая функция-заглушка для имитации поиска
-def run_search(query):
-    # Если запрос "тестовый запрос для успеха", возвращаем тестовые данные
-    if query and "тестовый запрос для успеха" in query.lower():
-        return [
-            {"name": "Тестовый товар 1", "price": 1000},
-            {"name": "Тестовый товар 2", "price": 2500},
-            {"name": "Тестовый товар 3", "price": 500}
-        ]
-    # В противном случае возвращаем пустой список или сообщение об ошибке
-    return []
-
+# --- МАРШРУТ 1: ГЛАВНАЯ СТРАНИЦА (ДЛЯ ТЕСТИРОВАНИЯ АКТИВНОСТИ)
+# Этот маршрут позволяет нам убедиться, что веб-запрос по адресу https://tildasearchshop.onrender.com/
+# успешно доходит до сервера и Flask-приложение запущено.
 @app.route('/', methods=['GET'])
 def index():
+    # Возвращаем простой HTML, который подтверждает, что сервер работает
     return """
-    <div style="text-align: center; padding: 50px; background-color: #e6fffa; border-radius: 10px; border: 2px solid #38b2ac;">
-        <h1 style="color: #38b2ac;">TildaSearchShop API Активен!</h1>
-        <p style="color: #4a5568;">Flask-приложение успешно запущено.</p>
-        <p style="color: #4a5568;">Отправьте <b>POST-запрос</b> с JSON-телом {"query": "ваш запрос"} на адрес:</p>
-        <code style="background-color: #f7fafc; padding: 5px 10px; border-radius: 5px; color: #e53e3e;">/api/search</code>
-    </div>
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <title>TildaSearchShop API Status</title>
+        <style>
+            body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+            h1 { color: #4CAF50; } /* Зеленый цвет для подтверждения */
+        </style>
+    </head>
+    <body>
+        <h1>TildaSearchShop API Активен!</h1>
+        <p>Flask-приложение успешно запущено.</p>
+        <p>Отправьте POST-запрос с JSON-телом {"query": "ваш запрос"} на адрес:</p>
+        <code style="background-color: #f0f0f0; padding: 5px 10px; border-radius: 5px;">/api/search</code>
+    </body>
+    </html>
     """, 200
 
+# --- МАРШРУТ 2: API ПОИСКА (ОСНОВНАЯ ФУНКЦИЯ)
+# Обрабатывает запросы поиска, отправляемые из Canvas
 @app.route('/api/search', methods=['POST'])
+# Теперь CORS явно включен для этого маршрута, включая OPTIONS
+# Это должно решить проблему "Failed to fetch"
+@cross_origin()
 def search():
-    if not request.is_json:
-        return jsonify({"error": "Missing JSON in request"}), 400
-    
-    data = request.get_json()
-    query = data.get('query')
+    """
+    Принимает JSON с полем 'query' и возвращает результаты поиска.
+    """
+    try:
+        data = request.get_json()
+        query = data.get('query')
 
-    if not query:
-        return jsonify({"error": "Missing 'query' parameter"}), 400
+        if not query:
+            # 400 Bad Request: Отсутствует поисковый запрос
+            return jsonify({"error": "Поле 'query' обязательно для заполнения."}), 400
 
-    # Вызываем функцию поиска
-    results = run_search(query)
-    
-    # Возвращаем результаты в формате JSON
-    return jsonify({"query": query, "results": results})
+        # ВРЕМЕННЫЙ ОТВЕТ: возвращаем тестовые данные, пока не будет реализована логика поиска
+        results = [
+            {"id": 1, "title": f"Тестовый результат 1 для: {query}", "link": "#"},
+            {"id": 2, "title": f"Тестовый результат 2 для: {query}", "link": "#"}
+        ]
+        
+        return jsonify({
+            "status": "success",
+            "query": query,
+            "results_count": len(results),
+            "results": results
+        }), 200
+
+    except Exception as e:
+        # Обработка непредвиденных ошибок
+        print(f"Ошибка при обработке запроса: {e}")
+        return jsonify({"status": "error", "message": "Внутренняя ошибка сервера"}), 500
 
 if __name__ == '__main__':
-    # В среде Render это запускает Gunicorn
+    # Запуск для локального тестирования
     app.run(host='0.0.0.0', port=5000)
