@@ -50,12 +50,13 @@ def extract_simulated_real_data(soup: BeautifulSoup) -> list:
     
     for h3 in h3_elements:
         link = h3.parent.get('href') # Ссылка обычно находится в родительском теге <a>
-        snippet = h3.parent.find_next_sibling('div') # Сниппет часто идет сразу после ссылки
+        # Google может изменять структуру, поэтому используем безопасный поиск сниппета
+        snippet_container = h3.parent.parent.find_next_sibling('div') 
 
         # Проверка наличия и структуры
         if link and link.startswith('http'):
             # Попытка извлечь сниппет (краткое описание)
-            snippet_text = snippet.get_text() if snippet else "Краткое описание товара недоступно."
+            snippet_text = snippet_container.get_text() if snippet_container else "Краткое описание товара недоступно."
 
             raw_results.append({
                 "title": h3.get_text(),
@@ -126,10 +127,28 @@ def perform_google_search(query_ru: str, query_en: str) -> list:
     print(f"ЛОГ БЭКЕНДА: Время парсинга: {round(time.time() - start_time, 2)} сек.")
     return results
 
+@app.route('/', methods=['GET'])
+def index():
+    """Ответ на базовый URL для предотвращения 404 ошибки."""
+    return jsonify({
+        "status": "info",
+        "message": "PSP Equipment Search API is running.",
+        "usage": "Use POST method to /api/search with JSON body: {'queries': ['your query']}"
+    }), 200
 
-@app.route('/api/search', methods=['POST'])
+@app.route('/api/search', methods=['GET', 'POST'])
 def search_catalog():
     start_time = time.time()
+    
+    # Если это GET запрос, возвращаем инструкцию (для тестирования в браузере)
+    if request.method == 'GET':
+        return jsonify({
+            "status": "info",
+            "message": "API endpoint is active. Use the POST method with a JSON body to execute a search.",
+            "example_body": "{'queries': ['Shure SM58', 'Shure SM58 price']}"
+        }), 200
+
+    # Если это POST запрос, выполняем поиск
     
     # 1. Обработка входящего JSON
     try:
