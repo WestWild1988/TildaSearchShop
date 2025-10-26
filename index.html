@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PSP Оборудование: Поиск по Интернет-Источникам</title>
+    <!-- Rule 3.2 -->
+    <title>PSP Оборудование: Поиск по Интернет-Источникам</title> 
     <!-- Подключение Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Настройки шрифта: Inter -->
     <style>
         /* Настройки шрифта и основного контейнера */
         :root {
@@ -27,353 +27,324 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
-        
-        /* Анимация при наведении (поднятие и тень) (Rule 4.3) */
+
+        /* Анимация при наведении (Rule 4.3) */
         .equipment-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
         }
 
-        /* Стиль для поля ввода и кнопки (для лучшей читаемости в темной теме) */
-        .input-dark {
-            background-color: #1f2937;
-            border-color: #374151;
-            color: #f3f4f6;
+        /* Кастомный стиль для бейджа Лучшего Предложения (Rule 4.4) */
+        .rank-badge {
+            animation: pulse-rank 2s infinite;
         }
 
-        /* Скрытие полосы прокрутки для лога, но сохранение функциональности */
-        #log-output {
-            scrollbar-width: none; /* Firefox */
-        }
-        #log-output::-webkit-scrollbar {
-            display: none; /* Chrome, Safari, Opera */
+        @keyframes pulse-rank {
+            0%, 100% { background-color: #f59e0b; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            50% { background-color: #d97706; box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
         }
     </style>
 </head>
-<body class="min-h-screen">
-    <div class="container mx-auto px-4 py-8 max-w-7xl">
+<body class="min-h-screen p-4 sm:p-8">
 
-        <!-- Заголовок и миссия -->
-        <header class="text-center mb-10">
-            <h1 class="text-4xl md:text-5xl font-extrabold text-white mb-2">
-                PSP Агрегатор Оборудования
-            </h1>
-            <p class="text-indigo-400 text-lg">
-                Поиск профессионального сценического, студийного и DJ-оборудования
-            </p>
+    <div class="max-w-7xl mx-auto">
+        
+        <!-- Заголовок -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-white mb-2">Агрегатор PSP Оборудования</h1>
+            <p class="text-lg text-gray-400">Поиск предложений из различных интернет-источников</p>
         </header>
 
         <!-- Форма Поиска -->
-        <form id="search-form" class="flex flex-col md:flex-row gap-4 mb-8">
-            <input type="text" id="search-input" placeholder="Введите название оборудования, напр. Shure SM58..."
-                   class="input-dark flex-grow p-4 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base"
-                   required>
-            <button type="submit" id="search-button"
-                    class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-4 px-6 rounded-xl transition duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                Найти в Интернете
-            </button>
+        <form id="searchForm" class="mb-8 p-4 bg-gray-800 rounded-xl shadow-2xl">
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="text" id="searchInput" placeholder="Введите название оборудования (напр., Shure SM58)" 
+                       class="flex-grow p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:ring-indigo-500 focus:border-indigo-500" 
+                       required>
+                <button type="submit" id="searchButton" 
+                        class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Начать Поиск
+                </button>
+            </div>
+            <p id="statusMessage" class="mt-3 text-center text-gray-500 text-sm"></p>
         </form>
 
-        <!-- Сообщение о статусе -->
-        <div id="status-message" class="text-center text-lg font-medium mb-8 text-gray-500">
-            Введите запрос для начала поиска.
-        </div>
-        
-        <!-- Фильтры и Управление -->
-        <div class="bg-gray-800 p-6 rounded-xl mb-8 shadow-xl">
-            <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Фильтрация и Настройка</h2>
-            <div class="flex flex-col sm:flex-row gap-4 sm:gap-6 items-end">
-                <!-- Фильтр по цене -->
-                <div class="flex-grow w-full sm:w-auto">
-                    <label class="block text-sm font-medium text-gray-300 mb-1">Мин. Цена (₽)</label>
-                    <input type="number" id="price-filter-min" placeholder="От" min="0" 
-                           class="input-dark w-full p-3 rounded-lg text-sm">
-                </div>
-                <div class="flex-grow w-full sm:w-auto">
-                    <label class="block text-sm font-medium text-gray-300 mb-1">Макс. Цена (₽)</label>
-                    <input type="number" id="price-filter-max" placeholder="До" min="0" 
-                           class="input-dark w-full p-3 rounded-lg text-sm">
-                </div>
-                
-                <!-- Кнопка Применить -->
-                <button type="button" id="apply-filters-button"
-                        class="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 w-full sm:w-auto">
-                    Применить Фильтры
+        <!-- Блок Фильтров -->
+        <div id="filterBlock" class="mb-8 p-4 bg-gray-800 rounded-xl shadow-2xl border-t-2 border-indigo-600 hidden">
+            <h2 class="text-xl font-semibold mb-3">Фильтр по цене (₽)</h2>
+            <div class="flex flex-col sm:flex-row gap-4 items-center">
+                <input type="number" id="priceFilterMin" placeholder="Мин. цена" 
+                       class="w-full sm:w-auto p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:ring-indigo-500 focus:border-indigo-500" min="0">
+                <span class="text-gray-400 hidden sm:inline">-</span>
+                <input type="number" id="priceFilterMax" placeholder="Макс. цена" 
+                       class="w-full sm:w-auto p-3 rounded-lg bg-gray-700 text-white border border-gray-600 focus:ring-indigo-500 focus:border-indigo-500" min="0">
+                <button type="button" id="applyFiltersButton"
+                        class="w-full sm:w-auto px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg shadow-md transition duration-200">
+                    Применить Фильтр
                 </button>
             </div>
         </div>
 
-        <!-- Контейнер для Результатов -->
-        <div id="results-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 mb-10">
-            <!-- Сюда будут вставляться карточки результатов -->
+        <!-- Контейнер Результатов -->
+        <div id="resultsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Здесь будут отображаться карточки результатов -->
         </div>
 
-        <!-- Пагинация -->
-        <div id="pagination-controls" class="flex justify-center items-center gap-4 mb-8">
-            <button id="prev-page-button" disabled
-                    class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 disabled:opacity-30">
-                &larr; Назад
+        <!-- Блок Пагинации -->
+        <div id="paginationBlock" class="flex justify-between items-center p-4 bg-gray-800 rounded-xl shadow-2xl border-t-2 border-indigo-600 hidden">
+            <button id="prevPageButton" 
+                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                ← Предыдущая
             </button>
-            <span id="page-info" class="text-gray-300 text-sm">Страница 1 из 1</span>
-            <button id="next-page-button" disabled
-                    class="bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 disabled:opacity-30">
-                Вперед &rarr;
+            <span id="pageInfo" class="text-white font-medium">Страница 1 из 1</span>
+            <button id="nextPageButton" 
+                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                Следующая →
             </button>
         </div>
 
-        <!-- Секция Лога -->
+        <!-- Блок Логирования (для отладки) -->
         <div class="mt-8">
-            <h2 class="text-xl font-semibold text-gray-200 mb-3 border-b border-gray-700 pb-2">Логика Работы (Лог)</h2>
-            <div id="log-output" 
-                 class="bg-gray-900 p-4 rounded-lg text-xs text-gray-400 h-40 overflow-y-scroll border border-gray-700">
-                <!-- Сюда будут добавляться сообщения лога -->
+            <h2 class="text-xl font-semibold text-gray-300 mb-2">Лог Фронтенда (Отладка)</h2>
+            <div id="logArea" class="bg-gray-900 p-4 rounded-lg text-sm text-gray-400 h-40 overflow-y-auto">
+                <!-- Сообщения лога будут здесь -->
             </div>
         </div>
 
     </div>
 
-    <!-- JavaScript Логика -->
     <script>
-        // --- КОНСТАНТЫ И СОСТОЯНИЕ ---
-        const API_URL = '/search'; // URL для Flask API
-        const ITEMS_PER_PAGE = 5; // Правило 2.4.d: 5 элементов на страницу
+        // Константы и глобальные переменные
+        const API_URL = 'https://PSP-Search-API.example.com/api/search'; // Имитация URL API
+        const ITEMS_PER_PAGE = 5; // Rule 2.4.d
         
-        let allResults = []; // Все полученные результаты
-        let filteredResults = []; // Отфильтрованные результаты
+        let allResults = [];      // Все полученные результаты от API (Rule 2.4.a)
+        let filteredResults = []; // Результаты после фильтрации
         let currentPage = 1;
 
-        // --- ЭЛЕМЕНТЫ DOM ---
-        const searchForm = document.getElementById('search-form');
-        const searchInput = document.getElementById('search-input');
-        const searchButton = document.getElementById('search-button');
-        const resultsContainer = document.getElementById('results-container');
-        const logOutput = document.getElementById('log-output');
-        const statusMessage = document.getElementById('status-message');
-        const prevPageButton = document.getElementById('prev-page-button');
-        const nextPageButton = document.getElementById('next-page-button');
-        const pageInfo = document.getElementById('page-info');
-        const priceFilterMin = document.getElementById('price-filter-min');
-        const priceFilterMax = document.getElementById('price-filter-max');
-        const applyFiltersButton = document.getElementById('apply-filters-button');
-        
-        // --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+        // Элементы DOM
+        const searchForm = document.getElementById('searchForm');
+        const searchInput = document.getElementById('searchInput');
+        const searchButton = document.getElementById('searchButton');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const logArea = document.getElementById('logArea');
+        const filterBlock = document.getElementById('filterBlock');
+        const priceFilterMin = document.getElementById('priceFilterMin');
+        const priceFilterMax = document.getElementById('priceFilterMax');
+        const applyFiltersButton = document.getElementById('applyFiltersButton');
+        const paginationBlock = document.getElementById('paginationBlock');
+        const prevPageButton = document.getElementById('prevPageButton');
+        const nextPageButton = document.getElementById('nextPageButton');
+        const pageInfo = document.getElementById('pageInfo');
 
-        /**
-         * Добавляет сообщение в лог с отметкой времени.
-         * @param {string} message 
-         */
+        // --- Вспомогательные Функции ---
+
+        /** Добавляет сообщение в лог отладки (Rule 2.1.b) */
         function appendToLog(message) {
-            const timestamp = new Date().toLocaleTimeString('ru-RU');
-            logOutput.innerHTML += `<div class="mb-1">[${timestamp}] ${message}</div>`;
-            logOutput.scrollTop = logOutput.scrollHeight; // Прокрутка вниз
+            const time = new Date().toLocaleTimeString('ru-RU');
+            logArea.innerHTML += `<div>[${time}] ${message}</div>`;
+            logArea.scrollTop = logArea.scrollHeight; // Прокрутка вниз
         }
 
-        /**
-         * Форматирует число как валюту (рубли).
-         * @param {number} price 
-         */
-        function formatPrice(price) {
-            // Rule 1.3: Локализация цен (₽)
-            return new Intl.NumberFormat('ru-RU', {
-                style: 'currency',
-                currency: 'RUB',
-                maximumFractionDigits: 0
-            }).format(price);
-        }
-
-        /**
-         * Имитирует перевод русского запроса на английский для двуязычного поиска (Rule 2.1.c).
-         * @param {string} text 
-         * @returns {string}
-         */
-        function translateToEnglish(text) {
-            const lowerText = text.toLowerCase();
-            
-            // Простая карта переводов для имитации
-            if (lowerText.includes('микрофон')) return text + ' microphone';
-            if (lowerText.includes('колонки')) return text + ' speakers';
-            if (lowerText.includes('пульт')) return text + ' audio mixer console';
-            if (lowerText.includes('наушники')) return text + ' headphones';
-            
-            // Если запрос, вероятно, уже содержит бренд/модель, просто добавляем общий термин
-            return text + ' equipment'; 
-        }
-
-        /**
-         * Рендерит карточку одного результата.
-         * @param {object} item Объект результата поиска.
-         */
-        function renderCard(item) {
-            // Rule 4.4: Бейдж для лучшего предложения (rank === 1)
-            const isBestOffer = item.rank === 1;
-            const rankBadge = isBestOffer ? `
-                <span class="absolute top-0 right-0 mt-4 mr-4 px-3 py-1 bg-red-600 text-white text-xs font-bold uppercase rounded-full shadow-lg transform rotate-3 -translate-y-1">
-                    Лучшая Цена!
-                </span>
-            ` : '';
-
-            // Rule 4.3: Фон #111827 и анимация .equipment-card
-            return `
-                <div class="equipment-card rounded-2xl p-6 relative border border-gray-700 flex flex-col justify-between" 
-                     data-price="${item.price}">
-                    ${rankBadge}
-                    <a href="${item.uri}" target="_blank" rel="noopener noreferrer" 
-                       class="text-indigo-400 hover:text-indigo-300 transition duration-150">
-                        <h3 class="text-xl font-bold mb-2 pr-10">${item.title}</h3>
-                    </a>
-                    <p class="text-sm text-gray-300 mb-4">${item.snippet}</p>
-                    
-                    <!-- Нижняя часть карточки (Цена и Источник) -->
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 border-t border-gray-700">
-                        <div class="mb-2 sm:mb-0">
-                            <p class="text-3xl font-extrabold text-green-400 leading-none">
-                                ${formatPrice(item.price)}
-                            </p>
-                            <p class="text-xs text-gray-400 mt-1">ID: ${item.id} | Ранг: ${item.rank}</p>
-                        </div>
-                        <div class="text-right">
-                             <span class="text-xs bg-gray-700 text-gray-200 px-3 py-1 rounded-full font-medium">
-                                Источник: ${item.source}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        /**
-         * Отображает текущую страницу результатов и обновляет пагинацию.
-         */
-        function renderPage() {
-            // Rule 2.4.d: Пагинация
-            resultsContainer.innerHTML = '';
-            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-            const endIndex = startIndex + ITEMS_PER_PAGE;
-            const resultsToDisplay = filteredResults.slice(startIndex, endIndex);
-
-            if (resultsToDisplay.length === 0 && allResults.length > 0) {
-                 // Если нет результатов после фильтрации/на странице, но есть в allResults, 
-                 // то это означает, что мы либо вне диапазона, либо фильтры слишком строги.
-                 resultsContainer.innerHTML = '<p class="text-center col-span-full text-gray-500 mt-8">Нет результатов, соответствующих заданным фильтрам на этой странице.</p>';
-            } else if (allResults.length === 0) {
-                 resultsContainer.innerHTML = '<p class="text-center col-span-full text-gray-500 mt-8">Начните поиск.</p>';
-            } else {
-                resultsToDisplay.forEach(item => {
-                    resultsContainer.innerHTML += renderCard(item);
-                });
-            }
-
-            // Обновление контролов пагинации
-            const totalPages = Math.ceil(filteredResults.length / ITEMS_PER_PAGE);
-            pageInfo.textContent = `Страница ${currentPage} из ${totalPages || 1}`;
-
-            prevPageButton.disabled = currentPage <= 1;
-            nextPageButton.disabled = currentPage >= totalPages;
-
-            if (totalPages <= 1) {
-                // Скрываем пагинацию, если она не нужна
-                document.getElementById('pagination-controls').classList.add('hidden');
-            } else {
-                document.getElementById('pagination-controls').classList.remove('hidden');
-            }
-        }
-
-        /**
-         * Применяет фильтры и сортировку, затем запускает рендеринг страницы.
-         */
-        function applyFiltersAndSort() {
-            appendToLog('[ФРОНТЕНД] Применение фильтров и пересортировка...');
-            
-            const minPrice = parseFloat(priceFilterMin.value) || 0;
-            const maxPrice = parseFloat(priceFilterMax.value) || Infinity;
-
-            // 1. Фильтрация (Rule 2.4.c)
-            filteredResults = allResults.filter(item => {
-                const price = item.price;
-                return price >= minPrice && price <= maxPrice;
-            });
-            
-            // 2. Сортировка (Rule 2.4.b: Сортировка по цене. Бэкенд уже отсортировал, но фронтенд должен 
-            // уметь сортировать отфильтрованные данные).
-            filteredResults.sort((a, b) => a.price - b.price);
-            
-            // Пересчет рангов для отфильтрованного списка (для корректного отображения бейджа)
-            // Это не по правилам, но улучшает UX: лучшее предложение среди отфильтрованных.
-            filteredResults.forEach(item => item.rank = 0);
-            if (filteredResults.length > 0) {
-                 filteredResults[0].rank = 1;
-                 appendToLog(`[ФРОНТЕНД] Найдено ${filteredResults.length} результатов, соответствующих фильтрам. Самая низкая цена: ${formatPrice(filteredResults[0].price)}.`);
-            } else {
-                 appendToLog('[ФРОНТЕНД] Фильтры не соответствуют ни одному результату.');
-            }
-
-            // Сброс на первую страницу и рендеринг
-            currentPage = 1;
-            renderPage();
-        }
-
-        /**
-         * Главная функция для выполнения поиска через API.
-         * @param {string[]} queries Массив запросов (русский, английский).
-         */
-        async function fetchSearchResults(queries) {
-            
-            const queryRu = queries[0];
-            
-            // Rule 2.1.b: Очистка предыдущих результатов/логов
-            resultsContainer.innerHTML = '';
-            logOutput.innerHTML = '';
+        /** Очищает состояние приложения (Rule 2.1.b) */
+        function resetState() {
             allResults = [];
             filteredResults = [];
             currentPage = 1;
-            renderPage(); // Очистка UI пагинации
+            resultsContainer.innerHTML = '';
+            logArea.innerHTML = '';
+            filterBlock.classList.add('hidden');
+            paginationBlock.classList.add('hidden');
+            priceFilterMin.value = '';
+            priceFilterMax.value = '';
+            appendToLog('[INFO] Состояние сброшено.');
+        }
+
+        /** Переводит русский запрос на английский (Rule 2.1.c) */
+        async function translateQuery(query) {
+            // В реальном приложении здесь был бы вызов API перевода (например, Google Translate)
+            // Здесь мы используем простую заглушку для имитации
+            const translationMap = {
+                'shure sm58': 'Shure SM58 microphone',
+                'pioneer cdj 3000': 'Pioneer CDJ-3000',
+                'yamaha hs8': 'Yamaha HS8 monitor speaker',
+                'микрофон': 'microphone',
+                'наушники': 'headphones',
+            };
+            const lowerQuery = query.toLowerCase();
+            const translation = translationMap[lowerQuery] || lowerQuery + ' equipment';
+
+            appendToLog(`[DEBUG] Перевод запроса '${query}' -> '${translation}'`);
+            return translation;
+        }
+
+        /** Создает карточку результата (Rule 4.3, 4.4) */
+        function createResultCard(item) {
+            const isBestOffer = item.rank === 1; // Rule 4.4
+
+            // Иконка "Лучшее Предложение"
+            const rankBadge = isBestOffer ? `
+                <span class="rank-badge absolute top-3 right-3 text-xs font-bold text-white px-3 py-1 rounded-full shadow-lg">
+                    Лучшее Предложение
+                </span>
+            ` : '';
             
-            appendToLog(`[ФРОНТЕНД] Запрос пользователя: "${queryRu}"`);
-            appendToLog(`[ФРОНТЕНД] Сформирован двуязычный запрос для API: ${JSON.stringify(queries)}`);
+            // Форматирование цены в рубли (Rule 1.3)
+            const formattedPrice = new Intl.NumberFormat('ru-RU', { 
+                style: 'currency', 
+                currency: 'RUB',
+                minimumFractionDigits: 0
+            }).format(item.price);
+
+
+            const card = document.createElement('div');
+            // Rule 4.3: equipment-card, темно-серый фон #111827, белый текст. Анимация при наведении.
+            card.className = 'equipment-card relative p-5 rounded-xl text-white flex flex-col justify-between h-full hover:shadow-indigo-500/50';
+            card.innerHTML = `
+                ${rankBadge}
+                <a href="${item.uri}" target="_blank" class="block">
+                    <h3 class="text-xl font-bold mb-2 pr-12 text-indigo-400 hover:text-indigo-300 transition-colors">${item.title}</h3>
+                </a>
+                <p class="text-2xl font-extrabold text-yellow-400 mb-3">${formattedPrice}</p>
+                <p class="text-sm text-gray-300 mb-4 flex-grow">${item.snippet}</p>
+                <div class="text-xs text-gray-500 mt-auto">
+                    Источник: <span class="font-semibold text-gray-400">${item.source}</span>
+                    <br>
+                    URI: <a href="${item.uri}" target="_blank" class="truncate block text-blue-400 hover:text-blue-300">${item.uri}</a>
+                </div>
+            `;
+            return card;
+        }
+
+        /** Отображает результаты текущей страницы */
+        function renderPage() {
+            resultsContainer.innerHTML = '';
+            
+            const totalItems = filteredResults.length;
+            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
+            
+            // Rule 2.4.d: Пагинация
+            const itemsOnPage = filteredResults.slice(startIndex, endIndex);
+
+            if (itemsOnPage.length === 0 && totalItems > 0 && currentPage > 1) {
+                // Если на текущей странице нет элементов (например, после фильтрации), 
+                // переходим на предыдущую.
+                currentPage--;
+                renderPage();
+                return;
+            }
+
+            itemsOnPage.forEach(item => {
+                resultsContainer.appendChild(createResultCard(item));
+            });
+            
+            // Обновление пагинации
+            const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+            pageInfo.textContent = `Страница ${currentPage} из ${totalPages === 0 ? 1 : totalPages}`;
+            prevPageButton.disabled = currentPage === 1 || totalPages === 0;
+            nextPageButton.disabled = currentPage === totalPages || totalPages === 0;
+
+            if (totalItems > ITEMS_PER_PAGE) {
+                paginationBlock.classList.remove('hidden');
+            } else {
+                 paginationBlock.classList.add('hidden');
+            }
+            
+            filterBlock.classList.remove('hidden');
+            
+            appendToLog(`[INFO] Отображена страница ${currentPage} (${itemsOnPage.length} элементов).`);
+        }
+
+        /** Применяет фильтры по цене и запускает сортировку/отображение (Rule 2.4.c) */
+        function applyFiltersAndSort() {
+            const minPrice = parseFloat(priceFilterMin.value) || 0;
+            const maxPrice = parseFloat(priceFilterMax.value) || Infinity;
+            
+            appendToLog(`[INFO] Применение фильтров: Мин=${minPrice || 'Нет'}, Макс=${maxPrice === Infinity ? 'Нет' : maxPrice}`);
+
+            filteredResults = allResults.filter(item => {
+                return item.price >= minPrice && item.price <= maxPrice;
+            });
+            
+            // Сортировка по возрастанию цены (Rule 2.4.b) уже выполнена на бэкенде,
+            // но мы сохраняем ее для полной уверенности и после фильтрации.
+            filteredResults.sort((a, b) => a.price - b.price);
+
+            // Сброс на первую страницу после фильтрации
+            currentPage = 1;
+            renderPage();
+            
+            if (filteredResults.length === 0) {
+                 statusMessage.textContent = 'Нет результатов, соответствующих заданным критериям фильтрации.';
+                 statusMessage.classList.remove('text-green-500', 'text-gray-500');
+                 statusMessage.classList.add('text-red-500');
+            } else {
+                 statusMessage.textContent = `Найдено ${filteredResults.length} результатов. Отсортировано по цене.`;
+                 statusMessage.classList.remove('text-red-500');
+                 statusMessage.classList.add('text-green-500');
+            }
+        }
+
+        // --- Основная Логика Поиска (Rule 2.2) ---
+
+        /** * Выполняет запрос к API для получения результатов поиска. 
+         * @param {string[]} queries - Массив запросов (Rule 2.2.a) 
+         */
+        async function fetchSearchResults(query) {
+            resetState(); // Очищаем предыдущие результаты (Rule 2.1.b)
+            
+            const query_ru = query;
+            const query_en = await translateQuery(query); // Rule 2.1.c
 
             searchButton.disabled = true;
-            statusMessage.textContent = 'Выполняется поиск в Интернете... Пожалуйста, подождите.';
-            statusMessage.classList.remove('text-green-500', 'text-red-500');
+            statusMessage.textContent = 'Выполняется поиск, пожалуйста, подождите...';
+            statusMessage.classList.remove('text-red-500', 'text-green-500');
             statusMessage.classList.add('text-gray-500');
 
             try {
-                // Rule 2.2.a: Отправка запроса с массивом queries
+                // Rule 2.2.b: Двуязычный запрос, отправляем массив [русский, английский]
+                const payload = {
+                    queries: [query_ru, query_en] 
+                };
+                
+                appendToLog(`[REQUEST] Отправка запроса к API: ${API_URL}`);
+                
+                // Имитация вызова API
                 const response = await fetch(API_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ queries: queries })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
-
+                
                 const data = await response.json();
 
                 if (response.ok && data.status === 'success') {
-                    // Rule 2.4.a: Получение результатов
-                    const rawResults = data.results || []; 
+                    // Rule 2.4.a: Получаем результаты
+                    allResults = data.results || []; 
+                    
+                    appendToLog(`[RESPONSE] API вернуло ${allResults.length} результатов за ${data.execution_time_seconds} сек.`);
 
-                    // Проверка на 20 результатов (Rule 2.4.a) - в API-заглушке это уже реализовано, но для надежности
-                    if (rawResults.length < 20) {
-                         appendToLog(`[ВНИМАНИЕ] API вернул ${rawResults.length} результатов. Ожидалось 20.`);
+                    if (allResults.length === 0) {
+                        statusMessage.textContent = 'По вашему запросу ничего не найдено.';
+                        statusMessage.classList.remove('text-green-500', 'text-gray-500');
+                        statusMessage.classList.add('text-red-500');
+                        filterBlock.classList.add('hidden');
                     } else {
-                         appendToLog(`[ФРОНТЕНД] Успешно получено ${rawResults.length} результатов за ${data.execution_time_seconds} сек.`);
+                        // Сортировка по возрастанию цены уже должна быть выполнена на бэкенде (Rule 2.4.b)
+                        // Применяем фильтры (изначально без изменений) и отображаем первую страницу
+                        applyFiltersAndSort(); 
+                        
+                        statusMessage.textContent = `Найдено ${allResults.length} результатов. Отсортировано по цене.`;
+                        statusMessage.classList.remove('text-red-500', 'text-gray-500');
+                        statusMessage.classList.add('text-green-500');
                     }
 
-                    allResults = rawResults;
-                    
-                    // Применяем фильтры и сортировку по умолчанию (т.е. только сортировку, если фильтры пустые)
-                    applyFiltersAndSort(); 
-
-                    const totalPages = Math.ceil(filteredResults.length / ITEMS_PER_PAGE);
-
-                    statusMessage.textContent = `Найдено ${allResults.length} предложений. Отображается ${filteredResults.length} после фильтрации.`;
-                    statusMessage.classList.remove('text-gray-500', 'text-red-500');
-                    statusMessage.classList.add('text-green-500');
-                    
                 } else {
-                    const errorMsg = data.error || data.message || 'Неизвестная ошибка API.';
-                    appendToLog(`[ERROR] Ошибка при обработке данных: ${errorMsg}`);
-                    statusMessage.textContent = `Ошибка поиска: ${errorMsg}`;
+                    const errorMessage = data.message || 'Неизвестная ошибка API.';
+                    appendToLog(`[ERROR] Ошибка API: ${errorMessage}`);
+                    statusMessage.textContent = `Ошибка поиска: ${errorMessage}`;
                     statusMessage.classList.remove('text-green-500', 'text-gray-500');
                     statusMessage.classList.add('text-red-500');
                 }
@@ -390,15 +361,13 @@
 
         // --- Инициализация и Обработчики Событий ---
 
+        // Обработчик формы поиска (Rule 2.1.a)
         searchForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const queryRu = searchInput.value.trim();
-            if (queryRu) {
-                // 1. Rule 2.1.c: Выполняем имитацию перевода
-                const queryEn = translateToEnglish(queryRu);
-                
-                // 2. Rule 2.2.b: Отправляем массив из двух запросов (русский и английский)
-                fetchSearchResults([queryRu, queryEn]);
+            const query = searchInput.value.trim();
+            if (query) {
+                // Rule 2.1.a: захватываем запрос
+                fetchSearchResults(query);
             }
         });
 
@@ -418,7 +387,7 @@
             }
         });
         
-        // Обработка фильтрации
+        // Обработка фильтрации (Rule 2.4.c)
         applyFiltersButton.addEventListener('click', applyFiltersAndSort);
         // Также можно применить фильтры при нажатии Enter в полях
         priceFilterMin.addEventListener('keypress', (e) => { if (e.key === 'Enter') applyFiltersAndSort(); });
@@ -427,10 +396,8 @@
         // Инициализация при загрузке страницы
         window.onload = () => {
             statusMessage.textContent = 'Введите запрос для начала поиска.';
-            renderPage(); // Инициализация пагинации
         }
 
     </script>
-
 </body>
 </html>
