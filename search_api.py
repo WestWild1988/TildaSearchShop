@@ -1,162 +1,176 @@
-import os
-import re
-import time
-import random
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask_cors import CORS 
+import random
+import time
+import re
+from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
-import requests
-from urllib.parse import urlparse
+import requests 
 
-# ==============================================================================
-# НАСТРОЙКА FLASK
-# ==============================================================================
-
+# Инициализация приложения Flask
 app = Flask(__name__)
-# Включаем CORS для всех доменов, чтобы фронтенд мог обращаться к API
-CORS(app)
+# Включаем CORS для возможности запросов с фронтенда (index.html)
+CORS(app) 
 
-# ==============================================================================
-# КОНСТАНТЫ
-# ==============================================================================
+# --- КОНСТАНТЫ ДЛЯ РЕАЛЬНОГО (НО ОГРАНИЧЕННОГО) ПОИСКА ---
+# Запросы направляются к Google Search с указанием локализации, 
+# что имитирует поиск в РФ/СНГ. ВАЖНО: Это может быть нестабильно, 
+# поэтому используется симуляция парсинга.
+SEARCH_URL_RU = "https://www.google.com/search?hl=ru&gl=ru&q="
+SEARCH_URL_EN = "https://www.google.com/search?hl=en&gl=us&q=" 
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# Таймаут для каждого запроса на скрапинг отдельной страницы (для имитации)
-SCRAPE_TIMEOUT = 5 
-# Нам нужно 20 результатов (4 страницы по 5)
-REQUIRED_RESULTS = 20 
-BASE_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-}
+# --- ФУНКЦИИ ОБРАБОТКИ ДАННЫХ (СИМУЛЯЦИЯ ИЗ-ЗА ОГРАНИЧЕНИЙ) ---
 
-# ==============================================================================
-# УТИЛИТЫ ИМИТАЦИИ СКАНИРОВАНИЯ
-# ==============================================================================
-
-def generate_mock_results(query: str) -> list[dict]:
+def extract_price(text: str) -> float:
     """
-    Генерирует 20 уникальных, реалистичных мок-результатов для пагинации
-    и фильтрации на основе одного ключевого запроса.
+    ВНИМАНИЕ: Из-за нестабильности и блокировки со стороны внешних
+    поисковых систем (Google, Яндекс) при автоматическом парсинге,
+    данная функция генерирует случайную, но реалистичную цену.
+    (Rule 2.2.c: Имитация цены).
+    Генерирует случайную цену в диапазоне 15 000 - 65 000 рублей.
     """
-    # Гарантируем, что цена будет в диапазоне, который может быть обработан
-    # ползунками фронтенда (до ~1000 * 1000 = 1,000,000 руб.)
-    base_price = random.randint(15000, 35000)
+    return random.randint(15000, 55000) + random.randint(0, 10000)
+
+def extract_simulated_real_data(query: str, count: int = 20) -> list:
+    """
+    Симулирует извлечение реальных данных из нескольких источников
+    на основе поискового запроса.
+    """
+    mock_sources = ["Яндекс.Маркет", "Ozon", "MusicStore.ru", "Avito Pro", "ProSound24.ru", "Baja.ru"]
     
-    mock_data = []
+    # Имитируем 20 результатов (Rule 2.4.a)
+    simulated_results = []
     
-    # Генерируем 20 результатов
-    for i in range(REQUIRED_RESULTS):
-        # Цена с небольшим разбросом
-        price_offset = random.randint(-5000, 15000)
-        price = max(1000, base_price + price_offset + (i * 100))
+    for i in range(1, count + 1):
+        # Имитация изменения названия/модели в зависимости от "источника"
+        model_name = query.replace('"', '').strip()
         
-        # Различные источники
-        sources = ['ozon.ru', 'market.yandex.ru', 'pop-music.ru', 'muzmarket.ru']
-        source = sources[i % len(sources)]
+        # Генерируем название с вариациями
+        title_template = random.choice([
+            f"{model_name} Динамический Микрофон",
+            f"Купить {model_name} в Москве",
+            f"Комплект {model_name} с кабелем",
+            f"Профессиональный микрофон {model_name}",
+            f"{model_name} - {random.choice(['Лучшая цена', 'Акция', 'Скидка'])}",
+        ])
         
-        # Rank: назначаем 1 для первого результата, чтобы проверить бейдж на фронте
-        rank = 1 if i == 0 else random.choice([2, 3, 4, 5])
+        simulated_results.append({
+            # Нам нужно только эти поля для фронтенда (Rule 2.3)
+            "title": f"{title_template} (вариант {i})",
+            "snippet": f"Описание товара и основные характеристики {model_name}. В наличии, быстрая доставка. Гарантия {random.choice([1, 2])} год(а).",
+            "uri": f"https://example.com/product/{model_name.lower().replace(' ', '-')}/{i}",
+            "source": random.choice(mock_sources),
+            # price и rank будут добавлены позже
+        })
         
-        item = {
-            "title": f"Микрофон {query.capitalize()} Pro X {100 + i}",
-            "snippet": f"Профессиональная модель для студийной записи. Отличный выбор для {query}. Гарантия 1 год.",
-            "uri": f"https://{source}/product/{i+1}",
-            "source": source,
+    return simulated_results
+
+def perform_google_search(query_ru: str, query_en: str) -> list:
+    """
+    Имитирует выполнение двуязычного поиска, обработку и ранжирование результатов.
+    
+    В реальном сценарии здесь должен был быть сложный парсинг и объединение данных.
+    Здесь используется полностью симулированный процесс.
+    """
+    print(f"ЛОГ БЭКЕНДА: Запрос RU: '{query_ru}', Запрос EN: '{query_en}'")
+    
+    # 1. Имитация получения сырых данных (заглушка)
+    # Используем только русский запрос для генерации данных.
+    raw_results = extract_simulated_real_data(query_ru, count=20) 
+    
+    if not raw_results:
+         print("ЛОГ БЭКЕНДА: Не удалось сгенерировать симулированные данные.")
+         return []
+
+    # 2. Постобработка и обогащение (Генерация цены и ранга)
+    final_results = []
+    for i, item in enumerate(raw_results):
+        
+        # Генерируем цену (Rule 2.3)
+        price = extract_price(item['title']) 
+        
+        final_results.append({
+            "id": i + 1,
+            "title": item['title'],
+            "snippet": item['snippet'],
+            "uri": item['uri'],
+            "source": item['source'],
             "price": price,
-            "rank": rank,
-        }
-        mock_data.append(item)
-    
-    # Сортируем по цене для соответствия правилам
-    mock_data.sort(key=lambda x: x['price'])
-    
-    # Обновляем rank после сортировки, чтобы самый дешевый был rank 1
-    for i in range(len(mock_data)):
-        # Назначаем Rank 1 самому дешевому товару
-        mock_data[i]['rank'] = 1 if i == 0 else random.randint(2, 5)
+            "rank": 0, # Ранг будет установлен позже
+        })
 
-    return mock_data
-
-def get_search_links(base_query: str) -> list[str]:
-    """
-    Имитирует вызов внешнего поисковика (Яндекс/Google) для получения 
-    списка релевантных ссылок.
-    """
-    print(f"[{time.strftime('%H:%M:%S')}] Имитация: Получение ссылок для '{base_query}'")
+    # 3. Сортируем и устанавливаем ранг (Rule 2.4.b)
+    # Фронтенд может пересортировать, но по правилам, бэкенд уже возвращает отсортированный список.
+    final_results.sort(key=lambda x: x['price'])
     
-    # Имитируем задержку
-    time.sleep(random.uniform(0.5, 1.5))
-    
-    # В реальном приложении здесь будет логика вызова поискового API.
-    return []
+    if final_results:
+        # Устанавливаем ранг 1 для самого дешевого (Rule 2.3, 4.4)
+        final_results[0]['rank'] = 1 
+        final_results[0]['title'] += " ✨ (ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ!)" # Улучшаем титул для наглядности
+        
+        # Устанавливаем ранг 2 для второго по цене
+        if len(final_results) > 1:
+             final_results[1]['rank'] = 2 
 
-# ==============================================================================
-# ЭТАП 2: ДВУХЭТАПНЫЙ ПОИСК И ГЕНЕРАЦИЯ МОК-ДАННЫХ
-# ==============================================================================
+    print(f"ЛОГ БЭКЕНДА: Сгенерировано и ранжировано {len(final_results)} результатов.")
+    return final_results
 
-def two_stage_search(query: str) -> tuple[list, int]:
-    """
-    Имитирует двухэтапный процесс: 
-    1. Получение ссылок (сейчас игнорируется).
-    2. Глубокий скрапинг (сейчас имитируется генерацией данных).
-    
-    Возвращает 20 мок-результатов.
-    """
-    print(f"[{time.strftime('%H:%M:%S')}] Запуск двухэтапного поиска для '{query}'")
-    
-    # 1. Имитация Этапа 1 (Получение ссылок)
-    # links = get_search_links(query) 
-    
-    # 2. Имитация Этапа 2 (Глубокий скрапинг / Генерация данных)
-    # Используем мок-генератор, чтобы гарантировать 20 результатов
-    final_results = generate_mock_results(query)
-            
-    # 3. Возвращаем результат
-    if not final_results:
-        # Это должно быть невозможно с мок-генератором, но для надежности
-        return {"error": f"Ничего не найдено по запросу: {query}"}, 404
-            
-    return final_results, 200
-
-
-# ==============================================================================
-# FLASK ROUTE
-# ==============================================================================
+# --- ГЛАВНЫЙ API ЭНДПОИНТ ---
 
 @app.route('/api/search', methods=['POST'])
-def search_endpoint():
+def search_aggregator():
     """
-    Основная конечная точка для приема поисковых запросов.
-    Ожидает JSON-тело с полем 'queries' (массив строк), как требует фронтенд.
+    Основной API-эндпоинт для выполнения поискового запроса.
     """
+    start_time = time.time()
     
-    # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем наличие 'queries'
-    if not request.json or 'queries' not in request.json or not isinstance(request.json['queries'], list):
-        print(f"[{time.strftime('%H:%M:%S')}] ОШИБКА 400: Неверный формат запроса. Получено: {request.json}")
-        return jsonify({"error": "Требуется JSON-тело с полем 'queries' (массив строк)."}), 400
+    # 1. Проверяем наличие JSON-тела
+    try:
+        data = request.get_json()
+    except Exception:
+        return jsonify({"error": "Неверный формат JSON в теле запроса."}), 400
 
-    queries = request.json['queries']
+    # 2. Валидация входных данных (Rule 2.2.a)
+    queries = data.get('queries')
     
-    # Используем первый запрос из массива (наиболее точный или основной) 
-    # для логики двухэтапного поиска.
-    main_query = queries[0] if queries else "generic audio equipment" 
+    if not queries or not isinstance(queries, list) or not queries[0]:
+        return jsonify({
+            "error": "Отсутствует или неверный параметр 'queries'. Ожидается массив строк."
+        }), 400
 
-    print(f"[{time.strftime('%H:%M:%S')}] Принят запрос. Основной query: '{main_query}', весь массив: {queries}")
+    # Используем первый запрос (русский) и второй (английский, если есть)
+    query_ru = queries[0]
+    # Фронтенд должен передавать перевод как второй элемент (Rule 2.2.b)
+    query_en = queries[1] if len(queries) > 1 else query_ru 
 
-    # 1. Выполняем логику двухэтапного поиска
-    results, status_code = two_stage_search(main_query)
     
-    # 2. Возвращаем результат
-    return jsonify(results), status_code
+    # 3. Вызываем функцию "реального" поиска
+    try:
+        # Запускаем поиск и обработку результатов
+        results = perform_google_search(query_ru, query_en)
+        
+    except RequestException as e:
+        # Обработка ошибок, связанных с внешними запросами 
+        print(f"ЛОГ БЭКЕНДА: Критическая ошибка сети при выполнении поиска: {e}")
+        return jsonify({"status": "error", "message": f"Критическая ошибка сети при подключении к поисковому сервису. Попробуйте снова. ({e})"}, 500)
 
-# Добавляем маршрут для проверки работоспособности (health check)
-@app.route('/', methods=['GET'])
-def health_check():
-    """
-    Проверка работоспособности сервиса.
-    """
-    return jsonify({"status": "ok", "service": "psp-search-backend (Two-Stage Scraping Mock)"}), 200
 
+    # 4. Возвращаем успешный ответ
+    end_time = time.time()
+    execution_time = round(end_time - start_time, 2)
+    
+    return jsonify({
+        "status": "success",
+        "query": query_ru, # Возвращаем русский запрос
+        "execution_time_seconds": execution_time,
+        "results_count": len(results),
+        "results": results # Возвращаем отсортированные и ранжированные результаты
+    })
+
+# Точка входа для запуска (только для тестирования локально)
+# В реальном продакшене эта часть часто не используется, 
+# т.к. Flask запускается через WSGI-сервер (например, Gunicorn)
 if __name__ == '__main__':
-    # ВНИМАНИЕ: Для продакшена используйте Gunicorn или другой WSGI-сервер
-    # Flask-сервер используется только для локальной разработки
-    app.run(debug=True, host='0.0.0.0', port=os.environ.get('PORT', 5000))
+    # Включаем отладку для удобства разработки
+    app.run(debug=True, port=5000)
