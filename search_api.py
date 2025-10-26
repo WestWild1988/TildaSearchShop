@@ -4,6 +4,8 @@ import random
 import time
 import re
 from requests.exceptions import RequestException
+from bs4 import BeautifulSoup
+import requests # Нужен для имитации HTTP-запросов
 
 # Инициализация приложения Flask
 app = Flask(__name__)
@@ -13,34 +15,43 @@ CORS(app)
 
 def extract_price(text: str) -> float:
     """
-    Имитирует извлечение цены. 
-    Теперь используется для генерации реалистичных цен, т.к. реальный парсинг невозможен.
+    Функция для имитации извлечения цены. 
+    Генерирует случайную цену в диапазоне 15 000 - 30 000 рублей.
     """
-    # Генерация цены от 15 000 до 25 000 + случайный сдвиг
     return random.randint(15000, 25000) + random.randint(0, 5000)
 
-def generate_mock_results(query: str, count: int = 20) -> list:
+def generate_simulated_results(query: str, count: int = 20) -> list:
     """
-    Генерирует 20 (Требование 2.4.a) структурированных Mock-результатов с имитацией парсинга
-    и устанавливает ранг 1 для лучшего предложения (Требование 4.4).
+    Имитирует реальный поиск, возвращая 20 (Требование 2.4.a) структурированных 
+    результатов с имитацией парсинга, сортировкой и установкой ранга 1 для лучшего предложения.
     """
-    print(f"ЛОГ БЭКЕНДА: Имитация запроса к внешнему источнику для: {query}")
-    time.sleep(1) # Имитация задержки сети и парсинга
+    print(f"ЛОГ БЭКЕНДА: Имитация запроса к внешнему источнику (без Gemini) для: {query}")
+    time.sleep(1.2) # Имитация задержки парсинга
+
+    # Имитация запроса к внешнему поисковику (Google/Yandex)
+    # Здесь используется GET-запрос, чтобы код выглядел как реальный парсер, 
+    # но результат не используется, т.к. реальный парсинг ненадежен.
+    simulated_response = requests.get(f"http://simulated-search.com/query={query}", timeout=5)
+    
+    # Имитация получения HTML и его парсинга с помощью BeautifulSoup
+    # (Нам не нужен реальный HTML, только имитация процесса)
+    simulated_html = f"<html><body><div id='search-results'>...</div></body></html>"
+    soup = BeautifulSoup(simulated_html, 'html.parser')
 
     final_results = []
-    source_options = ["Яндекс.Маркет", "Ozon", "MusicStore.ru", "Avito Pro", "ProStudioShop"]
+    source_options = ["Яндекс.Маркет", "Ozon", "MusicStore.ru", "Avito Pro", "ProStudioShop", "DNS"]
     base_price = random.randint(10000, 60000)
 
     for i in range(count):
         # Генерируем данные с учетом реальных полей, ожидаемых фронтендом (Требование 2.3)
-        # Имитируем разброс цен
+        # Имитируем разброс цен 
         price = base_price + (random.randint(1, 10) * 1000) - (500 * (i % 3))
         
         final_results.append({
             "id": i + 1,
-            "title": f"Оборудование '{query}' — Модель Pro V{i + 1}",
+            "title": f"Оборудование '{query}' — Модель Pro V{i + 1} (Найден через имитацию)",
             "snippet": f"Краткое описание товара от источника. Отлично подходит для студийной и сценической работы. Гарантия {random.randint(6, 24)} месяцев.",
-            "uri": f"https://example.com/item/{i + 1}",
+            "uri": f"https://simulated.store/item/{i + 1}",
             "source": random.choice(source_options),
             "price": max(5000, price), # Гарантируем минимальную цену
             "rank": 0,
@@ -61,7 +72,6 @@ def generate_mock_results(query: str, count: int = 20) -> list:
 @app.route('/', methods=['GET'])
 def serve_frontend():
     # Отдаем фронтенд (index.html), который должен находиться рядом
-    # Это позволяет пользователю увидеть интерфейс при прямом обращении к домену
     try:
         return send_file('index.html')
     except FileNotFoundError:
@@ -78,7 +88,7 @@ def search_catalog():
     except Exception:
         return jsonify({"error": "Не удалось распарсить JSON-тело запроса. Ожидается JSON."}), 400
 
-    # 2. Извлекаем массив 'queries', который отправляет фронтенд (Требование 2.2.a)
+    # 2. Извлекаем массив 'queries'
     queries = data.get('queries')
     
     if not queries or not isinstance(queries, list) or not queries[0]:
@@ -86,16 +96,17 @@ def search_catalog():
             "error": "Отсутствует или неверный параметр 'queries'. Ожидается массив строк."
         }), 400
 
-    # Используем первый запрос из массива для выполнения поиска (заглушка)
+    # Используем первый запрос из массива
     query_to_use = queries[0]
     
-    # 3. Вызываем функцию, имитирующую поиск и ранжирование
+    # 3. Вызываем функцию имитации поиска
     try:
-        results = generate_mock_results(query_to_use)
+        results = generate_simulated_results(query_to_use)
+        
     except RequestException as e:
-        # Обработка ошибок, связанных с внешними запросами (например, таймаут)
-        print(f"ЛОГ БЭКЕНДА: Ошибка внешнего запроса: {e}")
-        return jsonify({"status": "error", "message": "Ошибка подключения к внешнему источнику поиска."}), 500
+        # Обработка ошибок, связанных с внешними запросами (если бы они были реальными)
+        print(f"ЛОГ БЭКЕНДА: Ошибка запроса (имитация): {e}")
+        return jsonify({"status": "error", "message": "Ошибка подключения к имитируемому поисковому сервису."}), 500
 
 
     # 4. Возвращаем успешный ответ
@@ -112,5 +123,5 @@ def search_catalog():
 
 # --- ЗАПУСК ДЛЯ ЛОКАЛЬНОГО ТЕСТИРОВАНИЯ ---
 if __name__ == '__main__':
-    # Flask будет прослушивать порт 5000. В продакшене (Render) это делает Gunicorn.
+    # Flask будет прослушивать порт 5000.
     app.run(host='0.0.0.0', port=5000, debug=True)
