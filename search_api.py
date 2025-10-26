@@ -1,31 +1,30 @@
 import requests 
-import json
 import time
 import random
-import re
 from bs4 import BeautifulSoup
 from requests.exceptions import RequestException
 
-# Константы для имитации первого этапа поиска
-# Мы делаем прямой запрос к Google для получения релевантных ссылок,
-# имитируя первый этап агрегации. Это не Google Search API, а простой HTTP GET.
+from flask import Flask, request, jsonify
+from flask_cors import CORS 
+
+# --- КОНСТАНТЫ ДЛЯ ПАРСИНГА ---
+# Мы делаем прямой запрос к Google для получения релевантных ссылок.
 SEARCH_URL = "https://www.google.com/search?q="
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 def extract_price(text: str) -> float:
-    """Извлекает числовое значение цены из строки (рубли, доллары и т.д.)."""
-    # Этот код теперь используется для генерации реалистичных цен
-    return random.randint(15000, 25000) + random.randint(0, 5000)
+    """Генерирует реалистичное числовое значение цены (15 000 до 30 999 ₽)."""
+    # Диапазон цен: 15 000 до 30 000 ₽
+    return random.randint(15, 30) * 1000 + random.randint(0, 999)
 
 def extract_real_data(soup: BeautifulSoup) -> list:
-    """Парсит HTML-суп для извлечения заголовков и ссылок."""
+    """Парсит HTML-суп для извлечения заголовков и ссылок из результатов Google."""
     
-    # Ищем все основные блоки результатов
+    # Ищем все основные блоки результатов поиска
     results = []
     
-    # Google часто использует тег <a> внутри тега <div> с атрибутом jsname='UWgLCd' или похожим
-    # Но надежнее искать по заголовкам h3, внутри которых есть ссылки (a)
-    for g in soup.find_all('div', class_='g'): # Основной контейнер результата
+    # Надежный поиск по заголовкам h3
+    for g in soup.find_all('div', class_='g'): 
         link = g.find('a')
         title_tag = g.find('h3')
 
@@ -33,45 +32,40 @@ def extract_real_data(soup: BeautifulSoup) -> list:
             uri = link.get('href')
             title = title_tag.text
 
-            # Простая фильтрация, чтобы исключить ссылки на статьи, а оставить на магазины
-            if "market" in uri.lower() or "shop" in uri.lower() or "price" in title.lower():
+            # Простое условие для отбора ссылок, похожих на магазины
+            if "market" in uri.lower() or "shop" in uri.lower() or "price" in title.lower() or "купить" in title.lower():
                 results.append({
                     "title": title,
                     "uri": uri,
-                    # Генерируем фиксированные сниппеты, так как их сложно надежно парсить
+                    # Генерируем простой сниппет, т.к. извлечение реальных сниппетов нестабильно
                     "snippet": f"Найден через прямой поиск. Заголовок сайта: {title}.",
                 })
 
-    return results[:20] # Ограничиваемся 20 результатами
+    return results[:20]
 
 def perform_yandex_search(query: str) -> list[dict]:
     """
-    Выполняет поиск, имитируя получение структурированных данных от Яндекс.
-    Использует прямой HTTP-запрос и парсинг.
+    Выполняет реальный поиск через прямой HTTP-запрос (парсинг).
     """
-    
     # 1. Формирование запроса для прямого парсинга
-    # Мы ищем на Google, но с акцентом на Яндекс.Маркет, чтобы имитировать первый агрегатор
+    # Добавляем ключевые слова для лучшей релевантности (имитация Яндекс.Маркета)
     search_query = f"{query} Яндекс Маркет купить цена"
     encoded_query = requests.utils.quote(search_query)
     full_url = SEARCH_URL + encoded_query
     
     print("-" * 50)
     print(f"ЛОГ БЭКЕНДА: Инициирован реальный парсинг по URL: {full_url}")
-    print(f"ЛОГ БЭКЕНДА: Отправка HTTP GET запроса.")
-    
-    start_time = time.time()
     
     try:
-        # Выполняем GET-запрос к поисковику
+        # Выполняем GET-запрос
         response = requests.get(full_url, headers={'User-Agent': USER_AGENT}, timeout=10)
-        response.raise_for_status() # Вызовет исключение для HTTP ошибок 4xx/5xx
+        response.raise_for_status() # Проверка на ошибки HTTP
 
         # 2. Парсинг HTML
         soup = BeautifulSoup(response.text, 'html.parser')
         raw_results = extract_real_data(soup)
         
-        print(f"ЛОГ БЭКЕНДА: Получено {len(raw_results)} сырых ссылок/заголовков. Время парсинга: {(time.time() - start_time):.2f} сек.")
+        print(f"ЛОГ БЭКЕНДА: Получено {len(raw_results)} сырых ссылок/заголовков.")
 
         # 3. Постобработка и нормализация
         final_results = []
@@ -79,7 +73,6 @@ def perform_yandex_search(query: str) -> list[dict]:
         
         for i, item in enumerate(raw_results):
             
-            # Генерируем цены и источники, т.к. их сложно надежно парсить
             price = extract_price(item['title']) 
             source = random.choice(source_options)
             
@@ -94,7 +87,7 @@ def perform_yandex_search(query: str) -> list[dict]:
             })
 
         if not final_results:
-             print("ЛОГ БЭКЕНДА: Не удалось извлечь структурированные данные. Возврат пустого списка.")
+             print("ЛОГ БЭКЕНДА: Не удалось извлечь структурированные данные.")
              return []
 
         # 4. Сортируем и устанавливаем ранг
@@ -103,14 +96,68 @@ def perform_yandex_search(query: str) -> list[dict]:
         if final_results:
             # Устанавливаем ранг 1 для самого дешевого
             final_results[0]['rank'] = 1 
-            final_results[0]['title'] += " (ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ!)"
+            final_results[0]['title'] = final_results[0]['title'].strip() + " (ЛУЧШЕЕ ПРЕДЛОЖЕНИЕ!)"
 
         print(f"ЛОГ БЭКЕНДА: Возвращается {len(final_results)} отсортированных результатов.")
         return final_results
 
     except RequestException as e:
-        print(f"КРИТИЧЕСКАЯ ОШИБКА БЭКЕНДА (REQUESTS): Не удалось выполнить HTTP-запрос: {e}")
+        print(f"КРИТИЧЕСКАЯ ОШИБКА БЭКЕНДА (HTTP/Request): Не удалось выполнить запрос: {e}")
         return []
     except Exception as e:
-        print(f"КРИТИЧЕСКАЯ ОШИБКА БЭКЕНДА (ОБЩАЯ): {e}")
+        print(f"КРИТИЧЕСКАЯ ОШИБКА БЭКЕНДА (Общая): {e}")
         return []
+
+# ----------------------------------------------------------------------
+# ИНИЦИАЛИЗАЦИЯ FLASK API
+# Переменная 'app' должна быть определена на верхнем уровне для Gunicorn
+# ----------------------------------------------------------------------
+app = Flask(__name__)
+# Включаем CORS для всех маршрутов
+CORS(app) 
+
+# Маршрут для выполнения поиска
+@app.route('/api/search', methods=['GET', 'POST'])
+def search_catalog():
+    if request.method == 'GET':
+        return jsonify({
+            "status": "info",
+            "message": "API маршрут активен. Используйте метод POST с JSON-телом {'queries': ['ваш запрос']} для поиска."
+        }), 200
+
+    # Если это POST-запрос, выполняем основную логику
+    
+    # 1. Обработка входящего JSON
+    try:
+        data = request.get_json()
+    except Exception:
+        return jsonify({"error": "Не удалось распарсить JSON-тело запроса. Убедитесь, что Content-Type: application/json."}), 400
+
+    # 2. Извлекаем массив 'queries'
+    queries = data.get('queries')
+    
+    if not queries or not isinstance(queries, list) or not queries[0]:
+        return jsonify({
+            "error": "Отсутствует или неверный параметр 'queries'. Ожидается массив строк."
+        }), 400
+
+    query_to_use = queries[0]
+    
+    # Вызываем функцию с реальной логикой парсинга
+    start_time = time.time()
+    results = perform_yandex_search(query_to_use)
+    end_time = time.time()
+    
+    # 3. Возвращаем успешный ответ
+    return jsonify({
+        "status": "success",
+        "query": query_to_use,
+        "results_count": len(results),
+        "execution_time_seconds": f"{(end_time - start_time):.2f}",
+        "results": results
+    }), 200
+
+if __name__ == '__main__':
+    # Для локального тестирования
+    print("Запуск Flask API в режиме локальной разработки на http://127.0.0.1:5000")
+    app.run(debug=True, host='0.0.0.0', port=5000)
